@@ -3,7 +3,9 @@ These are only the changes of the MagboltzBind project
 
 ### VERSION 8.9.1
 * Added the CMake build system
-* Added the single run executable
+* Added the single run executable based on the fortran sources
+* Added the C header file for external binding
+* Added a library to link magboltz to external codes
 
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code

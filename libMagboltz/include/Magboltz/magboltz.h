@@ -5,18 +5,17 @@
 #define MAGBOLTZ_VERSION_MINOR 9
 #define MAGBOLTZ_VERSION_PATCH 1
 
-#define MAGBOLTZ_MAKE_VERSION(major, minor, patch)                                  \
-    ((major) *10000 + (minor) *100 + (patch))
-#define MAGBOLTZ_VERSION                                                            \
-    MAGBOLTZ_MAKE_VERSION (MAGBOLTZ_VERSION_MAJOR, MAGBOLTZ_VERSION_MINOR, MAGBOLTZ_VERSION_PATCH)
+#define MAGBOLTZ_MAKE_VERSION(major, minor, patch) ((major)*10000 + (minor)*100 + (patch))
+#define MAGBOLTZ_VERSION                                                                           \
+    MAGBOLTZ_MAKE_VERSION(MAGBOLTZ_VERSION_MAJOR, MAGBOLTZ_VERSION_MINOR, MAGBOLTZ_VERSION_PATCH)
 
 //
 // Dynamic shared object (DSO) and dynamic-link library (DLL) support
 //
 #if defined(_WIN32) || defined(__WIN32__) || defined(WIN32) || defined(__CYGWIN__)
-#  define MAGBOLTZ_API __attribute__((__dllexport__))
+#define MAGBOLTZ_API __attribute__((__dllexport__))
 #else
-#  define MAGBOLTZ_API __attribute__((__visibility__("default")))
+#define MAGBOLTZ_API __attribute__((__visibility__("default")))
 #endif
 
 #ifdef __cplusplus
@@ -25,19 +24,24 @@ namespace Magboltz
 extern "C" {
 #endif
 
-/* Magboltz COMMON block*/
+/* Magboltz COMMON blocks
+    Note that they are all global variables within the library*/
 
-  /* Magnetic field*/
-  extern struct {
-    double eovb;
-    double wb;
-    double btheta, bmag;
-  } bfld_;
+/* Magnetic field*/
+extern struct
+{
+    const double eovb; /* E over B ratio. This is defined internally. Should not be assigned.*/
+    const double wb;   /* The cyclotron frequency in radians per picosecond. Assigned internally */
+    double btheta;     /* The angle between the magnetic and electric field in degrees */
+    double bmag;       /* The magnitude of the magnetic field in kG*/
+} bfld_;
 
-  extern struct {
-    long long nGas;
-    long long nStep;
-    long long nAniso;
+/* Input parameter calculation */
+extern struct
+{
+    long long nGas; /* Number of gases in the mixture*/
+    long long nStep; /* Number of steps in the MC calculation */
+    long long nAniso; /*The type of scattering cross section to use. Alowed values are 0, 1, 2*/
     double efinal;
     double estep;
     double akt;
@@ -45,9 +49,10 @@ extern "C" {
     double tempc;
     double torr;
     long long ipen;
-  } inpt_;
+} inpt_;
 
-  extern struct {
+extern struct
+{
     double tmax;
     double small;
     double api;
@@ -57,93 +62,123 @@ extern "C" {
     double rstart;
     double efield;
     long long nmax;
-  } setp_;
-  
-  /* Physical constants */
-  extern struct {
+} setp_;
+
+/* Physical constants */
+extern struct
+{
     double echarg;
     double emass;
     double amu;
     double pir2;
-  } cnsts_;  
+} cnsts_;
 
-  /* Definition of the gas mixture   */
-  extern struct {
+/* Definition of the gas mixture   */
+extern struct
+{
     long long ngasn[6];
-  } gasn_; 
-  extern struct {
+} gasn_;
+
+extern struct
+{
     double an1, an2, an3, an4, an5, an6, an;
     double frac[6];
-  } ratio_;
-   
-  /* Calculation results */
-  /* Drift velocity */
-  extern struct {
-    double wx, wy, wz;
-  } vel_;  
-  extern struct {
-    double dwx, dwy, dwz;
-  } velerr_;
+} ratio_;
 
-  /* Diffusion */
-  extern struct {
+/* Calculation results */
+/* Drift velocity in cm/sec */
+extern struct
+{
+    double wx, wy, wz;
+} vel_;
+
+extern struct
+{
+    double dwx, dwy, dwz;
+} velerr_;
+
+/* Diffusion */
+extern struct
+{
     double difxx, difyy, difzz;
     double difyz, difxy, difxz;
-  } diflab_;
-  extern struct {
+} diflab_;
+extern struct
+{
     double dxxer, dyyer, dzzer;
     double dyzer, dxyer, dxzer;
-  } diferb_;
-  extern struct {
+} diferb_;
+extern struct
+{
     double difln, diftr;
-  } difvel_;
-  extern struct {
+} difvel_;
+extern struct
+{
     double dfler, dfter;
-  } diferl_;
+} diferl_;
 
-  /* Townsend and attachment coefficient */
-  extern struct {
+/* Townsend and attachment coefficient */
+extern struct
+{
     double alpha, att;
-  } ctowns_; 
-  extern struct {
+} ctowns_;
+extern struct
+{
     double alper, atter;
-  } ctwner_;
-  extern struct {
+} ctwner_;
+extern struct
+{
     double ralpha, ralper;
     double tofene, tofener, tofwv, tofwver;
     double tofdl, tofdler, tofdt, tofdter;
     double tofwr, tofwrer;
     double rattof, ratofer;
-  } tofout_;
+} tofout_;
 
 /* Magboltz internal functions */
 
-  void gasmix_(long long* ngs, double* q, 
-        double* qin, long long* nin, double* e, double* ei, char* name, 
-        double* virl, double* eb, double* peqel, double* peqin, 
-        double* penfra, long long* kel, long long* kin, char scrpt[226][30]);
+void
+gasmix_(long long* ngs, double* q, double* qin, long long* nin, double* e, double* ei, char* name,
+    double* virl, double* eb, double* peqel, double* peqin, double* penfra, long long* kel,
+    long long* kin, char scrpt[226][30]);
 
-  void setup1_();
+void
+setup1_();
 
-  void mixer_();
+void
+mixer_();
 
-  void elimit_(long long* ielow);
-  void elimitb_(long long* ielow);
-  void elimitc_(long long* ielow);
-  
-  void monte_();
-  void montea_();
-  void monteb_();
-  void montec_();
+void
+elimit_(long long* ielow);
+void
+elimitb_(long long* ielow);
+void
+elimitc_(long long* ielow);
 
-  void alpcalc_();
-  void alpclca_();
-  void alpclcb_();
-  void alpclcc_();
+void
+monte_();
+void
+montea_();
+void
+monteb_();
+void
+montec_();
 
-  void prnter_();
-  void output_();
-  void output2_();
+void
+alpcalc_();
+void
+alpclca_();
+void
+alpclcb_();
+void
+alpclcc_();
+
+void
+prnter_();
+void
+output_();
+void
+output2_();
 
 #ifdef __cplusplus
 } // End extern C

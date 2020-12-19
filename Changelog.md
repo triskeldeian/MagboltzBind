@@ -10,6 +10,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 8.9.4
+* UPDATED XENON IONISATION X-SECTION (FROM OZKAN SAHIN)
+
 ### VERSION 8.9.3 
 * UPDATED XENON IONISATION X-SECTION
 

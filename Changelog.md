@@ -10,6 +10,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 8.9.2
+* INCLUDED HYDROGEN UPDATE WITH 106 LEVELS
+
 ### VERSION 8.9.1
 * INCLUDED C2H2F4 UPDATE
 

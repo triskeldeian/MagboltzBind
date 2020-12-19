@@ -11,7 +11,7 @@ install( TARGETS ${exename} EXPORT "${PROJECT_NAME}Targets"
 # The library has C headers and linkage to provide bindings for other languages and tools
 
 set( libname "magboltz")
-set( lib_fullver 8.9.1)
+set( lib_fullver ${PROJECT_VERSION})
 set( lib_apiver 1 )
 add_library(${libname} SHARED "" )
 target_sources( ${libname} PRIVATE

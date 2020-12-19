@@ -10,63 +10,66 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 8.9.5
+* New gas(44) trimethyl amine tma used as light emitter in wire chambers and dopant in penning dopant in xenon
+
 ### VERSION 8.9.4
-* UPDATED XENON IONISATION X-SECTION (FROM OZKAN SAHIN)
+* Updated xenon ionisation x-section (from ozkan sahin)
 
 ### VERSION 8.9.3 
-* UPDATED XENON IONISATION X-SECTION
+* Updated xenon ionisation x-section
 
 ### VERSION 8.9.2
-* INCLUDED HYDROGEN UPDATE WITH 106 LEVELS
+* Included hydrogen update with 106 levels
 
 ### VERSION 8.9.1
-* INCLUDED C2H2F4 UPDATE
+* Included c2h2f4 update
 
 ### VERSION 8.9 
-* INCLUDED NEON UPDATE WITH 45 LEVELS
+* Included neon update with 45 levels
 
 ### VERSION 8.8 
-* INCLUDED HELIUM UPDATE WITH 49 LEVELS
-* REMOVED CONTROL ON PENNING IN PURE GASES WHICH NOW ALLOWS CALCULATION OF HORNBECK-MOLNAR IONISATION AS A PSEUDO-PENNING EFFECT
+* Included helium update with 49 levels
+* Removed control on penning in pure gases which now allows calculation of hornbeck-molnar ionisation as a pseudo-penning effect
 
 ### VERSION 8.7
-* INCLUDED XENON UPDATE WITH 50 LEVELS
+* Included xenon update with 50 levels
 
 ### VERSION 8.6 
-* INCLUDED ARGON UPDATE WITH 44 LEVELS
+* Included argon update with 44 levels
 
 ### VERSION 8.5 
-* CORRECTION FOR MISSING LINE IN SUBROUTINE MONTEA WHICH CAUSED ERRORS IN VERSIONS 8.4,8.3 AND 8.2 WHEN A MAGNETIC FIELD WAS INCLUDED PARALLEL TO THE E FIELD
+* Correction for missing line in subroutine montea which caused errors in versions 8.4,8.3 and 8.2 when a magnetic field was included parallel to the e field
 
 ### VERSION 8.4 
-* INCLUDED ISOBUTANE UPDATE
+* Included isobutane update
 
 ### VERSION 8.3 
-* INCLUDED NITROGEN UPDATE
+* Included nitrogen update
  
  ### VERSION 8.2 
- * INTRODUCED ALTERNATIVE FORMALISM FOR ANGULAR DISTRIBUTION REF: PHYS.REV.65E 037402 OKHRIMOVSKYY ET AL.
- * INTRODUCED CONTROL FOR ANGULAR DISTRIBUTION GIVING CHOICE OF TWO DIFFERENT ANISOTROPIC SCAT. FORMALISMS.
-* INCREASED DECORRELATION TO  200000 COLLISIONS
-* INCLUDED PENNING TRANSFER EFFICIENCY
-* INCREASED ENERGY SEGEMENTATION FROM 2000 TO 4000 STEPS
+ * Introduced alternative formalism for angular distribution ref: phys.rev.65e 037402 okhrimovskyy et al.
+ * Introduced control for angular distribution giving choice of two different anisotropic scat. formalisms.
+* Increased decorrelation to  200000 collisions
+* Included penning transfer efficiency
+* Increased energy segementation from 2000 to 4000 steps
 
 ### VERSION 7.1
-* INCREASED SOME ARRAY SIZES AND REDUCED DIFFUSION ARRAY WITH SHORTER CORRELATIONS (BACK TO VERSION 6.1) THE LONGER CORRELATION INTRODUCED PROBLEMS WITH ROUNDING ERRORS ON DIFFUSION CALCULATIONS ON 32 BIT PCS.
-* INTRODUCED SAMPLING OF MOST SIGNIFICANT BITS IN COLLISION ARRAY IN ORDER TO REDUCE COMPUTATION TIME FOR COMPLEX MIXTURES WITH MANY LEVELS.
+* Increased some array sizes and reduced diffusion array with shorter correlations (back to version 6.1) the longer correlation introduced problems with rounding errors on diffusion calculations on 32 bit pcs.
+* Introduced sampling of most significant bits in collision array in order to reduce computation time for complex mixtures with many levels.
 
 ### VERSION 7.2
-* CHANGED RANDOM NUMBER GENERATOR FROM drand48 TO RM48.F ALL INTEGERS MADE INTEGER*8
+* Changed random number generator from drand48 to rm48.f all integers made integer*8
   
 ### VERSION 6.1 
-* NEW CO2 X-SECTION SET INCLUDED VERSION 6.2 UPDATES OF N2O AND CD4 X-SECTIONS
+* New co2 x-section set included version 6.2 updates of n2o and cd4 x-sections
 
 ### VERSION 6.3 
-* UPDATES CH4 X-SECTIONS (ONLY CHANGES FANO FACTORS AND HAS NO EFFECT ON DRIFT DIFFUSION COMPARED TO 2002 DATA SET)
+* Updates ch4 x-sections (only changes fano factors and has no effect on drift diffusion compared to 2002 data set)
 
 ### VERSION 6.4
-* INCREASED DIFFUSION ARRAY TO ALLOW LONGER DECORRELATION
+* Increased diffusion array to allow longer decorrelation
 
 ### VERSION 6
-* REMOVED ALL RESTRICTIONS ON ANGULAR SCATTERING , ALL ELASTIC AND INELASTIC SCATTERING PROCESSES CAN NOW HAVE ANGULAR DISTRIBUTIONS ( IF INCLUDED IN DATA BASE) IF THE ELASTIC ANGULAR DISTRIBUTION EXISTS THEN PROGRAM USES THIS AS AN APPROXIMATION TO THE ANGULAR DISTRIBUTION OF THE PRIMARY IONISATION ELECTRON ( SECONDARIES ALWAYS HAVE ISOTROPIC SCATTERING). THE ANGULAR DISTRIBUTION OF THE PRIMARY IS TAKEN TO BE THE SAME AS THE ANGULAR DISTRIBUTION OF AN ELASTIC SCATTERED ELECTRON WITH THE SAME FINAL ENERGY. THIS ALGORITHM FOR THE ANGULAR DISTRIBUTION OF THE PRIMARY IONISATION ELECTRON REPRODUCES EXPERIMENTAL IONISATION ANGULAR DISTRIBUTIONS AND ALSO GIVES THE CORRECT RANGES FOR HIGH ENERGY ELECTRONS IN GASES. RANGES ARE ACCURATE UP TO 100KEV. N.B  IF USING WATER MIXTURES YOU WILL SEE AN INCREASE IN COMPUTING TIME COMPARED TO PREVIOUS VERSIONS SINCE NOW 210 ROTATIONAL
-TRANSITIONS ARE INCLUDED IN THE DATA BASE.
+* Removed all restrictions on angular scattering , all elastic and inelastic scattering processes can now have angular distributions ( if included in data base) if the elastic angular distribution exists then program uses this as an approximation to the angular distribution of the primary ionisation electron ( secondaries always have isotropic scattering). The angular distribution of the primary is taken to be the same as the angular distribution of an elastic scattered electron with the same final energy. This algorithm for the angular distribution of the primary ionisation electron reproduces experimental ionisation angular distributions and also gives the correct ranges for high energy electrons in gases. ranges are accurate up to 100KeV. N.B  If using water mixtures you will see an increase in computing time compared to previous versions since now 210 rotational
+transitions are included in the data base.

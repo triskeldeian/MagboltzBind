@@ -3,7 +3,7 @@
 
 #define MAGBOLTZ_VERSION_MAJOR 8
 #define MAGBOLTZ_VERSION_MINOR 9
-#define MAGBOLTZ_VERSION_PATCH 4
+#define MAGBOLTZ_VERSION_PATCH 5
 
 #define MAGBOLTZ_MAKE_VERSION(major, minor, patch) ((major)*10000 + (minor)*100 + (patch))
 #define MAGBOLTZ_VERSION                                                                           \

@@ -10,6 +10,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 8.9.6
+* Update for argon with small increase in excitation x-sections in resonance region for s-levels and compensating increase in elastic momentum transfer x-section at the maximum (11 ev) 
+
 ### VERSION 8.9.5
 * New gas(44) trimethyl amine tma used as light emitter in wire chambers and dopant in penning dopant in xenon
 

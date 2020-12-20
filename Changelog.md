@@ -10,6 +10,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 8.9.7
+* Update for krypton with 51 levels 
+
 ### VERSION 8.9.6
 * Update for argon with small increase in excitation x-sections in resonance region for s-levels and compensating increase in elastic momentum transfer x-section at the maximum (11 ev) 
 

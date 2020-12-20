@@ -1,9 +1,9 @@
 #ifndef MAGBOLTZ_MAGBOLTZ_H__
 #define MAGBOLTZ_MAGBOLTZ_H__
 
-#define MAGBOLTZ_VERSION_MAJOR 8
-#define MAGBOLTZ_VERSION_MINOR 9
-#define MAGBOLTZ_VERSION_PATCH 7
+#define MAGBOLTZ_VERSION_MAJOR 9
+#define MAGBOLTZ_VERSION_MINOR 0
+#define MAGBOLTZ_VERSION_PATCH 3
 
 #define MAGBOLTZ_MAKE_VERSION(major, minor, patch) ((major)*10000 + (minor)*100 + (patch))
 #define MAGBOLTZ_VERSION                                                                           \
@@ -137,10 +137,12 @@ extern struct
 
 /* Magboltz internal functions */
 
-void
-gasmix_(long long* ngs, double* q, double* qin, long long* nin, double* e, double* ei, char* name,
-    double* virl, double* eb, double* peqel, double* peqin, double* penfra, long long* kel,
-    long long* kin, char scrpt[226][30]);
+  void gasmix_(long long* ngs, double* q, 
+        double* qin, long long* nin, double* e, double* ei, char* name, 
+        double* virl, double* eb, double* peqel, double* peqin, 
+        double* penfra, long long* kel, long long* kin, 
+        double* qion, double* peqion, double* eion, long long* nion,
+        char scrpt[260][50]);
 
 void
 setup1_();

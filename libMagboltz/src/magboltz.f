@@ -1,6 +1,23 @@
-C  PROGRAM MAGBOLTZ 2   VERSION 8.97       SEPTEMBER 2011
+C  PROGRAM MAGBOLTZ 2   VERSION 9.03       AUGUST 2013  
 C --------------------------------------------------------------------
-C  COPYRIGHT 2011   STEPHEN FRANCIS BIAGI
+C  COPYRIGHT 2013   STEPHEN FRANCIS BIAGI
+C----------------------------------------------------------------------
+C VERSION 9.03 SINCE VERSION 6 THE CALCULATION OF THE STATISTICAL 
+C              ACCURACY OF THE DRIFT VELOCITY AND DIFFUSION COEFICIENTS
+C              HAS UNDERESTIMATED THE ACCURACY BY A FACTOR OF APPROX.
+C              SQRT(10) . THIS ERROR HAS BEEN FIXED IN THIS VERSION AND
+C              NOW GIVES A FACTOR OF 10 SHORTER CALCULATION TIME FOR
+C              THE SAME ACCURACY. 
+C              INCREASED DECORRELATION MATRIX TO 2000000 COLLISIONS
+C----------------------------------------------------------------------
+C VERSION 9.02 UPDATE INCREASES DECORRELATION MATRIX FROM 400000 
+C              COLLISIONS TO 1000000. INCREASES THE CALCULATION ACCURACY
+C              OF THE LONGITUDINAL DIFFUSION IN THE MOST SENSITIVE 
+C              GAS PURE XENON TO BETTER THAN 2%.
+C VERSION 9.01 UPDATE INCLUDES BACKGROUND GAS MOTION(TEMPERATURE)      
+C              ALLOWS MODELLING OF DRIFT AND DIFFUSION AT LOW FIELDS
+C    UPDATE TO GAS DATA SUBROUTINES TO INCREASE ARRAY SIZE FOR 
+C    INELASTICS TO 250 LEVELS AND UP TO 8 IONISATION LEVELS PER GAS. 
 C----------------------------------------------------------------------
 C VERSION 8.97 UPDATE FOR KRYPTON WITH 51 LEVELS 
 C----------------------------------------------------------------------
@@ -10,7 +27,7 @@ C              AND COMPENSATING INCREASE IN ELASTIC MOMENTUM TRANSFER
 C              X-SECTION AT THE MAXIMUM (11 EV) 
 C ----------------------------------------------------------------------
 C VERSION 8.95 NEW GAS(44) TRIMETHYL AMINE TMA USED AS LIGHT EMITTER IN 
-C              WIRE CHAMBERS AND DOPANT IN PENNING DOPANT IN XENON
+C              WIRE CHAMBERS AND  PENNING DOPANT IN XENON
 C ---------------------------------------------------------------------
 C VERSION 8.94 UPDATED XENON IONISATION X-SECTION (FROM OZKAN SAHIN)
 C----------------------------------------------------------------------
@@ -115,7 +132,7 @@ C --------------------------------------------------------------------
 C THE  INPUT CONTROL FLAG IPEN WHEN SET TO 1 ALLOWS SOME PENNING CALCS:
 C  
 C   ESTIMATES OF THE PENNING EFFECT AT HIGH FIELD CAN BE OBTAINED BY 
-C  EDITING THE ARRAY PENFRA(3,220) IN THE GAS DATA BASE SUBROUTINES.
+C  EDITING THE ARRAY PENFRA(3,250) IN THE GAS DATA BASE SUBROUTINES.
 C THE PROGRAM CAN THEN BE RECOMPILED AND RUN. THE OUTPUT THEN CONTAINS
 C INFORMATION ON THE PENNING FRACTION USED IN THE CALCULATION.
 C  IN THE GAS MIXTURES. PENNING EFFECTS CAN OCCUR BETWEEN EXCITED STATES
@@ -132,7 +149,7 @@ C  THE THIRD ENTRY , PENFRA(3,N) IS THE DECAY TIME OF THE EXCITED STATE
 C  IN THE MIXTURE.
 C  NB DELOCALISATION DISTANCE IS IN MICRONS AND DECAY TIME IN PICOSECS.
 C   THERE IS NO AUTOMATIC METHOD FOR CHOOSING THE PENNING FRACTION BUT 
-C  YOU WILL FIND THAT THE ARRAY PENFRA(1,220) FOR HELIUM HAS BEEN SET TO 
+C  YOU WILL FIND THAT THE ARRAY PENFRA(1,250) FOR HELIUM HAS BEEN SET TO 
 C  1.0 (100%) THIS IS THE ONLY CORRECT CHOICE FOR THIS GAS WITH ANY OTHER
 C  GAS MIXED IN. SIMILARLY THE NEON PENNING FRACTION SHOULD BE BETWEEN
 C  0.3 AND 0.7 (30 TO 70 %) . ARGON WHEN MIXED WITH HYDROCARBONS OTHER
@@ -203,7 +220,7 @@ C----------------------------------------------------------------
 C---------------------------------------------------------------       
 C   INPUT CARDS :                                                       
 C----------------------------------------------------------             
-C  FIRST CARD: 3I10,F10.5  :  NGAS,NMAX,IPEN,EFINAL        
+C  FIRST CARD: 4I10,F10.5  :  NGAS,NMAX,IPEN,ITHRM,EFINAL        
 C  NGAS:  NUMBER OF GASES IN MIXTURE                                    
 C  NMAX: NUMBER OF REAL COLLISIONS ( MULTIPLE OF 1*10**7 )        
 C  USE NMAX = BETWEEN 2 AND 5 FOR INELASTIC GAS TO OBTAIN 1% ACCURACY
@@ -213,7 +230,9 @@ C      HIGHER VALUES THAN NMAX=214 CAN ONLY BE USED ON COMPUTERS SUCH
 C      AS DEC ALPHAS WITH TRUE 64 BIT INTEGERS. PCS ARE LIMITED TO 
 C      31 BIT INTEGERS...
 C    IPEN   = 0 PENNING EFFECTS NOT INCLUDED
-C           = 1 PENNING EFFECTS INCLUDED (SEE INSTRUCTIONS ABOVE)            
+C           = 1 PENNING EFFECTS INCLUDED (SEE INSTRUCTIONS ABOVE)   
+C    ITHRM  = 0 GAS MOTION ASSUMED TO BE AT O KELVIN (STATIC GAS)
+C    ITHRM  = 1 GAS MOTION TAKEN TO BE AT INPUT TEMPERATURE        
 C    EFINAL = UPPER LIMIT OF THE ELECTRON ENERGY IN ELECTRON VOLTS.
 C    EFINAL = 0.0 (PROGRAM AUTOMATICALLY CALCULATES UPPER INTEGRATION  
 C                 ENERGY LIMIT)                              
@@ -307,12 +326,13 @@ C
       IMPLICIT INTEGER*8 (I-N)
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                  
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
-      COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
-     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
-      COMMON/CTOWNS/ALPHA,ATT 
- 1    CALL SETUP(LAST)                                                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+ 1    CALL READIN(LAST)
+      IF(LAST.EQ.1) GO TO 99
+      IF(ITHRM.EQ.0) GO TO 6 
+      CALL SETUPT(LAST)                                                
       IF(LAST.EQ.1) GO TO 99
       IF(EFINAL.GT.0.0D0) GO TO 3
 C CALCULATE EFINAL (START AT 0.5 EV. IF E/P GT 15 START AT 8.0 EV.)
@@ -320,18 +340,18 @@ C CALCULATE EFINAL (START AT 0.5 EV. IF E/P GT 15 START AT 8.0 EV.)
       EOP=EFIELD*(TEMPC+273.15D0)/(TORR*293.15D0) 
       IF(EOP.GT.15.0D0) EFINAL=8.0D0
       ESTART=EFINAL/50.0D0      
- 2    CALL MIXER 
+ 2    CALL MIXERT
 C LOOP TO CALCULATE EFINAL
       IF(BMAG.EQ.0.0D0.OR.BTHETA.EQ.0.0D0.OR.DABS(BTHETA).EQ.180.0D0) 
      /THEN 
-       CALL ELIMIT(IELOW)
+       CALL ELIMITT(IELOW)
        GO TO 10
       ENDIF
       IF(BTHETA.EQ.90.0D0) THEN
-       CALL ELIMITB(IELOW)
+       CALL ELIMITBT(IELOW)
        GO TO 10
       ELSE
-       CALL ELIMITC(IELOW)
+       CALL ELIMITCT(IELOW)
       ENDIF
    10 IF(IELOW.EQ.1) THEN
        EFINAL=EFINAL*DSQRT(2.0D0)
@@ -339,26 +359,20 @@ C LOOP TO CALCULATE EFINAL
        GO TO 2
       ENDIF
       GO TO 4 
-    3 CALL MIXER
+    3 CALL MIXERT
     4 CONTINUE   
-      CALL PRNTER                                                       
-      IF(BMAG.EQ.0.0D0) CALL MONTE
+      CALL PRNTERT                                                      
+      IF(BMAG.EQ.0.0D0) CALL MONTET
       IF(BMAG.NE.0.0D0) THEN
        IF(BTHETA.EQ.0.0D0.OR.BTHETA.EQ.180.0D0) THEN
-        CALL MONTEA
+        CALL MONTEAT
         ELSE IF(BTHETA.EQ.90.0D0) THEN
-        CALL MONTEB
+        CALL MONTEBT
         ELSE
-        CALL MONTEC
+        CALL MONTECT
        ENDIF
       ENDIF
-C     IF(SPEC(4000).GT.500.0D0) THEN
-C      WRITE(6,50)
-C  50  FORMAT(' WARNING COMPUTATION STOPPED INCREASE ELECTRON ENERGY INT
-C    /EGRATION RANGE ')
-C      STOP      
-C     ENDIF
-      CALL OUTPUT 
+      CALL OUTPUTT
 C IF ATTACHMENT OR IONISATION RATE IS GREATER THAN SSTMIN THEN INCLUDE
 C   SPATIAL GRADIENTS IN THE SOLUTION .   
       TGAS=273.15D0+TEMPC 
@@ -370,9 +384,75 @@ C     SSTMIN=60.0D0
 C*****************     
       IF(DABS(ALPP-ATTP).GT.SSTMIN) GO TO 5 
       IF(ALPP.GT.SSTMIN.OR.ATTP.GT.SSTMIN) GO TO 5
-      CALL OUTPUT2
+      CALL OUTPUT2T
       GO TO 1
    5  IF(BMAG.EQ.0.0D0) THEN 
+       CALL ALPCALCT
+      ELSE IF(BTHETA.EQ.0.0D0.OR.BTHETA.EQ.180.0D0) THEN
+       CALL ALPCLCAT
+      ELSE IF(BTHETA.EQ.90.0D0) THEN
+       CALL ALPCLCBT
+      ELSE
+       CALL ALPCLCCT
+      ENDIF
+      CALL OUTPUT2T
+      GO TO 1
+  99  STOP                 
+    6 CALL SETUP(LAST)                                                
+      IF(LAST.EQ.1) GO TO 999
+      IF(EFINAL.GT.0.0D0) GO TO 13
+C CALCULATE EFINAL (START AT 0.5 EV. IF E/P GT 15 START AT 8.0 EV.)
+      EFINAL=0.5D0
+      EOP=EFIELD*(TEMPC+273.15D0)/(TORR*293.15D0) 
+      IF(EOP.GT.15.0D0) EFINAL=8.0D0
+      ESTART=EFINAL/50.0D0      
+  12  CALL MIXER 
+C LOOP TO CALCULATE EFINAL
+      IF(BMAG.EQ.0.0D0.OR.BTHETA.EQ.0.0D0.OR.DABS(BTHETA).EQ.180.0D0) 
+     /THEN 
+       CALL ELIMIT(IELOW)
+       GO TO 20
+      ENDIF
+      IF(BTHETA.EQ.90.0D0) THEN
+       CALL ELIMITB(IELOW)
+       GO TO 20
+      ELSE
+       CALL ELIMITC(IELOW)
+      ENDIF
+   20 IF(IELOW.EQ.1) THEN
+       EFINAL=EFINAL*DSQRT(2.0D0)
+       ESTART=EFINAL/50.0D0
+       GO TO 12
+      ENDIF
+      GO TO 14
+   13 CALL MIXER
+   14 CONTINUE   
+      CALL PRNTER                                                       
+      IF(BMAG.EQ.0.0D0) CALL MONTE
+      IF(BMAG.NE.0.0D0) THEN
+       IF(BTHETA.EQ.0.0D0.OR.BTHETA.EQ.180.0D0) THEN
+        CALL MONTEA
+        ELSE IF(BTHETA.EQ.90.0D0) THEN
+        CALL MONTEB
+        ELSE
+        CALL MONTEC
+       ENDIF
+      ENDIF
+      CALL OUTPUT 
+C IF ATTACHMENT OR IONISATION RATE IS GREATER THAN SSTMIN THEN INCLUDE
+C   SPATIAL GRADIENTS IN THE SOLUTION .   
+      TGAS=273.15D0+TEMPC 
+      ALPP=ALPHA*760.0D0*TGAS/(TORR*293.15D0)            
+      ATTP=ATT*760.0D0*TGAS/(TORR*293.15D0)
+C*******************      
+      SSTMIN=30.0D0
+C     SSTMIN=60.0D0
+C*****************     
+      IF(DABS(ALPP-ATTP).GT.SSTMIN) GO TO 15
+      IF(ALPP.GT.SSTMIN.OR.ATTP.GT.SSTMIN) GO TO 15
+      CALL OUTPUT2
+      GO TO 1
+   15 IF(BMAG.EQ.0.0D0) THEN 
        CALL ALPCALC
       ELSE IF(BTHETA.EQ.0.0D0.OR.BTHETA.EQ.180.0D0) THEN
        CALL ALPCLCA
@@ -382,8 +462,8 @@ C*****************
        CALL ALPCLCC
       ENDIF
       CALL OUTPUT2 
-      GO TO 1
-  99  STOP                                                              
+      GO TO 1 
+  999 STOP                 
       END
       SUBROUTINE ANGCUT(PSCT1,ANGC,PSCT2)        
       IMPLICIT REAL*8 (A-H,O-Z)
@@ -404,51 +484,58 @@ C  ---------------------------------------------------------------
       ANGC=THETAC*RADS
       RETURN
       END                                                              
-      SUBROUTINE MIXER                                                  
+      SUBROUTINE MIXERT                                                
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2
       COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)              
       COMMON/GASN/NGASN(6)                                    
-      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(220,4000),
-     /QIN2(220,4000),QIN3(220,4000),QIN4(220,4000),QIN5(220,4000),
-     /QIN6(220,4000),QSATT(4000)             
+      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(250,4000),
+     /QIN2(250,4000),QIN3(250,4000),QIN4(250,4000),QIN5(250,4000),
+     /QIN6(250,4000),QSATT(4000)             
       COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),
      /QINEL(4000),QEL(4000)                                          
-      COMMON/MIX3/NIN1,NIN2,NIN3,NIN4,NIN5,NIN6,LION(6),LIN1(220),
-     /LIN2(220),LIN3(220),LIN4(220),LIN5(220),LIN6(220),ALION(6),
-     /ALIN1(220),ALIN2(220),ALIN3(220),ALIN4(220),ALIN5(220),ALIN6(220)
+      COMMON/MIX3/NIN1,NIN2,NIN3,NIN4,NIN5,NIN6,LION(6),LIN1(250),
+     /LIN2(250),LIN3(250),LIN4(250),LIN5(250),LIN6(250),ALION(6),
+     /ALIN1(250),ALIN2(250),ALIN3(250),ALIN4(250),ALIN5(250),ALIN6(250)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX                                                
-      COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512)                   
-      COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),IPLAST(6),ISIZE(6),
+     /PENFRA(6,3,260),TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO
       COMMON/FRED/FCION(4000),FCATT(4000)
       COMMON/MRATIO/VAN1,VAN2,VAN3,VAN4,VAN5,VAN6,VAN
       COMMON/NAMES/NAMEG(6)                               
-      COMMON/SCRIP/DSCRPT(512)                             
-      CHARACTER*15 NAMEG,NAME1,NAME2,NAME3,NAME4,NAME5,NAME6
-      CHARACTER*30 DSCRPT,SCRP1(226),SCRP2(226),SCRP3(226),SCRP4(226),
-     /SCRP5(226),SCRP6(226)                            
+      COMMON/SCRIPT/DSCRPT(6,260) 
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM               
+      CHARACTER*25 NAMEG,NAME1,NAME2,NAME3,NAME4,NAME5,NAME6
+      CHARACTER*50 DSCRPT,SCRP1(260),SCRP2(260),SCRP3(260),SCRP4(260),
+     /SCRP5(260),SCRP6(260)                            
       DIMENSION Q1(6,4000),Q2(6,4000),Q3(6,4000),Q4(6,4000),
      /Q5(6,4000),Q6(6,4000)
-      DIMENSION E1(6),E2(6),E3(6),E4(6),E5(6),E6(6),EI1(220),EI2(220),
-     /EI3(220),EI4(220),EI5(220),EI6(220)
+      DIMENSION E1(6),E2(6),E3(6),E4(6),E5(6),E6(6),EI1(250),EI2(250),
+     /EI3(250),EI4(250),EI5(250),EI6(250)
       DIMENSION QQROT(4000),QDROT(4000),QATT(6,4000),EION(6)       
       DIMENSION PEQEL1(6,4000),PEQEL2(6,4000),PEQEL3(6,4000),
      /PEQEL4(6,4000),PEQEL5(6,4000),PEQEL6(6,4000)
-      DIMENSION PEQIN1(220,4000),PEQIN2(220,4000),PEQIN3(220,4000),  
-     /PEQIN4(220,4000),PEQIN5(220,4000),PEQIN6(220,4000)
-      DIMENSION PENFRA1(3,220),PENFRA2(3,220),PENFRA3(3,220),
-     /PENFRA4(3,220),PENFRA5(3,220),PENFRA6(3,220)
-      DIMENSION KIN1(220),KIN2(220),KIN3(220),KIN4(220),KIN5(220),
-     /KIN6(220)
+      DIMENSION PEQIN1(250,4000),PEQIN2(250,4000),PEQIN3(250,4000),  
+     /PEQIN4(250,4000),PEQIN5(250,4000),PEQIN6(250,4000)
+      DIMENSION PENFRA1(3,250),PENFRA2(3,250),PENFRA3(3,250),
+     /PENFRA4(3,250),PENFRA5(3,250),PENFRA6(3,250)
+      DIMENSION KIN1(250),KIN2(250),KIN3(250),KIN4(250),KIN5(250),
+     /KIN6(250)
       DIMENSION KEL1(6),KEL2(6),KEL3(6),KEL4(6),KEL5(6),KEL6(6)
+      DIMENSION EION1(8),EION2(8),EION3(8),EION4(8),EION5(8),EION6(8)
+      DIMENSION QION1(8,4000),QION2(8,4000),QION3(8,4000),QION4(8,4000),
+     /QION5(8,4000),QION6(8,4000)
+      DIMENSION PEQION1(8,4000),PEQION2(8,4000),PEQION3(8,4000),
+     /PEQION4(8,4000),PEQION5(8,4000),PEQION6(8,4000)
 C                                                                       
 C  ---------------------------------------------------------------------
 C                                                                       
-C     SUBROUTINE MIXER FILLS ARRAYS OF COLLISION FREQUENCY              
+C     SUBROUTINE FILLS ARRAYS OF COLLISION FREQUENCY              
 C     CAN HAVE A MIXTURE OF UP TO 6 GASES                               
 C                                                                       
 C                                                                       
@@ -461,6 +548,12 @@ C
       NIN4=0
       NIN5=0
       NIN6=0
+      NION1=0
+      NION2=0
+      NION3=0
+      NION4=0
+      NION5=0
+      NION6=0
       N4000=4000
       NONE=1                                                     
       DO 2 J=1,6  
@@ -470,14 +563,21 @@ C
       KEL3(J)=0
       KEL4(J)=0
       KEL5(J)=0
-      KEL6(J)=0                       
+      KEL6(J)=0 
+      AMGAS(J)=0.0                      
       DO 1 I=1,4000                                                    
       Q1(J,I)=0.0D0                                                     
       Q2(J,I)=0.0D0                                                     
       Q3(J,I)=0.0D0                                                     
       Q4(J,I)=0.0D0
       Q5(J,I)=0.0D0
-      Q6(J,I)=0.0D0                                                     
+      Q6(J,I)=0.0D0
+      QION1(J,I)=0.0D0
+      QION2(J,I)=0.0D0
+      QION3(J,I)=0.0D0
+      QION4(J,I)=0.0D0
+      QION5(J,I)=0.0D0
+      QION6(J,I)=0.0D0                                            
     1 CONTINUE                                                          
       E1(J)=0.0D0                                                       
       E2(J)=0.0D0                                                       
@@ -493,34 +593,35 @@ C
       E(I)=EHALF+ESTEP*AJ
     3 EROOT(I)=DSQRT(E(I))
       EROOT(1)=DSQRT(EHALF)                   
-      DO 4 I=1,220
+      DO 4 I=1,250
       KIN1(I)=0
       KIN2(I)=0
       KIN3(I)=0
       KIN4(I)=0
       KIN5(I)=0
     4 KIN6(I)=0
-      DO 6 I=1,512 
-    6 INDEX(I)=0                                               
+      DO 6 I=1,260 
+      DO 6 MGAS=1,6
+    6 INDEX(MGAS,I)=0    
 C                                                                       
 C   CALL GAS CROSS-SECTIONS 
       CALL GASMIX(NGASN(1),Q1,QIN1,NIN1,E1,EI1,NAME1,VIRIAL1,EB1,
-     /PEQEL1,PEQIN1,PENFRA1,KEL1,KIN1,SCRP1)     
+     /PEQEL1,PEQIN1,PENFRA1,KEL1,KIN1,QION1,PEQION1,EION1,NION1,SCRP1)
       IF(NGAS.EQ.1) GO TO 10 
       CALL GASMIX(NGASN(2),Q2,QIN2,NIN2,E2,EI2,NAME2,VIRIAL2,EB2,
-     /PEQEL2,PEQIN2,PENFRA2,KEL2,KIN2,SCRP2)
+     /PEQEL2,PEQIN2,PENFRA2,KEL2,KIN2,QION2,PEQION2,EION2,NION2,SCRP2)
       IF(NGAS.EQ.2) GO TO 10 
       CALL GASMIX(NGASN(3),Q3,QIN3,NIN3,E3,EI3,NAME3,VIRIAL3,EB3,
-     /PEQEL3,PEQIN3,PENFRA3,KEL3,KIN3,SCRP3)
+     /PEQEL3,PEQIN3,PENFRA3,KEL3,KIN3,QION3,PEQION3,EION3,NION3,SCRP3)
       IF(NGAS.EQ.3) GO TO 10 
       CALL GASMIX(NGASN(4),Q4,QIN4,NIN4,E4,EI4,NAME4,VIRIAL4,EB4,
-     /PEQEL4,PEQIN4,PENFRA4,KEL4,KIN4,SCRP4)
+     /PEQEL4,PEQIN4,PENFRA4,KEL4,KIN4,QION4,PEQION4,EION4,NION4,SCRP4)
       IF(NGAS.EQ.4) GO TO 10 
       CALL GASMIX(NGASN(5),Q5,QIN5,NIN5,E5,EI5,NAME5,VIRIAL5,EB5,
-     /PEQEL5,PEQIN5,PENFRA5,KEL5,KIN5,SCRP5)
+     /PEQEL5,PEQIN5,PENFRA5,KEL5,KIN5,QION5,PEQION5,EION5,NION5,SCRP5)
       IF(NGAS.EQ.5) GO TO 10 
       CALL GASMIX(NGASN(6),Q6,QIN6,NIN6,E6,EI6,NAME6,VIRIAL6,EB6,
-     /PEQEL6,PEQIN6,PENFRA6,KEL6,KIN6,SCRP6)
+     /PEQEL6,PEQIN6,PENFRA6,KEL6,KIN6,QION6,PEQION6,EION6,NION6,SCRP6)
    10 CONTINUE                                                          
 C ---------------------------------------------------------------       
 C  CORRECTION OF NUMBER DENSITY DUE TO VIRIAL COEFFICIENT               
@@ -530,761 +631,915 @@ C-----------------------------------------------------------------
 C     CALCULATION OF COLLISION FREQUENCIES FOR AN ARRAY OF              
 C     ELECTRON ENERGIES IN THE RANGE ZERO TO EFINAL                     
 C                                                                       
-C     L=5*N-4    ELASTIC NTH GAS                                      
-C     L=5*N-3    IONISATION NTH GAS                                     
-C     L=5*N-2    ATTACHMENT NTH GAS                                     
-C     L=5*N-1    INELASTIC NTH GAS    
-C     L=5*N      SUPERELASTIC NTH GAS                                   
+C     L=1      ELASTIC NTH GAS                                      
+C     L=2      IONISATION NTH GAS                                     
+C     L=3      ATTACHMENT NTH GAS                                     
+C     L=4      INELASTIC NTH GAS    
+C     L=5      SUPERELASTIC NTH GAS                                   
 C---------------------------------------------------------------   
-      DO 700 IE=1,4000  
+      DO 700 IE=1,4000 
+      DO 700 KGAS=1,NGAS 
       FCION(IE)=0.0D0
       FCATT(IE)=0.0D0
-      NP=1                                                              
-      CF(IE,NP)=Q1(2,IE)*VAN1
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0    
-      INDEX(NP)=0 
+C ELASTIC
+      NP=1
+      IF(KGAS.EQ.1) THEN                                              
+       CF(KGAS,IE,NP)=Q1(2,IE)*VAN1
+      ELSE IF(KGAS.EQ.2) THEN
+       CF(KGAS,IE,NP)=Q2(2,IE)*VAN2
+      ELSE IF(KGAS.EQ.3) THEN
+       CF(KGAS,IE,NP)=Q3(2,IE)*VAN3
+      ELSE IF(KGAS.EQ.4) THEN 
+       CF(KGAS,IE,NP)=Q4(2,IE)*VAN4
+      ELSE IF(KGAS.EQ.5) THEN
+       CF(KGAS,IE,NP)=Q5(2,IE)*VAN5
+      ELSE
+       CF(KGAS,IE,NP)=Q6(2,IE)*VAN6
+      ENDIF
+      PSCT(KGAS,IE,NP)=0.5D0
+      ANGCT(KGAS,IE,NP)=1.0D0
+      INDEX(KGAS,NP)=0
 C     
-      IF(KEL1(2).EQ.1) THEN
-       PSCT1=PEQEL1(2,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2  
-       INDEX(NP)=1   
-      ENDIF
-      IF(KEL1(2).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL1(2,IE)
-       INDEX(NP)=2
-      ENDIF
+      IF(KGAS.EQ.1) THEN
+       IF(KEL1(2).EQ.1) THEN
+        PSCT1=PEQEL1(2,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2  
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KEL1(2).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL1(2,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+      ELSE IF(KGAS.EQ.2) THEN
+       IF(KEL2(2).EQ.1) THEN
+        PSCT1=PEQEL2(2,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2  
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KEL2(2).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL2(2,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+      ELSE IF(KGAS.EQ.3) THEN
+       IF(KEL3(2).EQ.1) THEN
+        PSCT1=PEQEL3(2,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2  
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KEL3(2).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL3(2,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+      ELSE IF(KGAS.EQ.4) THEN
+       IF(KEL4(2).EQ.1) THEN
+        PSCT1=PEQEL4(2,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2  
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KEL4(2).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL4(2,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+      ELSE IF(KGAS.EQ.5) THEN
+       IF(KEL5(2).EQ.1) THEN
+        PSCT1=PEQEL5(2,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2  
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KEL5(2).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL5(2,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+      ELSE 
+       IF(KEL6(2).EQ.1) THEN
+        PSCT1=PEQEL6(2,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2  
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KEL6(2).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL6(2,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+      ENDIF                   
 C 
-      IF(IE.GT.1) GO TO 12                                   
-      RGAS1=1.0D0+E1(2)/2.0D0                                           
-      RGAS(NP)=RGAS1                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=0 
-      L=1                                                      
-      IARRY(NP)=L 
-      DSCRPT(NP)=SCRP1(2)  
-      NAMEG(1)=NAME1  
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                              
-   12 IF(EFINAL.LT.E1(3)) GO TO 30                                      
-      NP=NP+1   
-      CF(IE,NP)=Q1(3,IE)*VAN1
-      FCION(IE)=FCION(IE)+CF(IE,NP) 
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C  
-      IF(KEL1(3).EQ.1) THEN
-       PSCT1=PEQEL1(3,IE) 
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KEL1(3).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL1(3,IE)
-       INDEX(NP)=2
+      IF(IE.GT.1) GO TO 12  
+      IF(KGAS.EQ.1) THEN                                 
+       RGAS1=1.0D0+E1(2)/2.0D0 
+       AMGAS(KGAS)=2.0D0*EMASS/E1(2)
+       RGAS(KGAS,NP)=RGAS1                                           
+       DSCRPT(KGAS,NP)=SCRP1(2)  
+       NAMEG(KGAS)=NAME1  
+      ELSE IF(KGAS.EQ.2) THEN
+       RGAS2=1.0D0+E2(2)/2.0D0 
+       AMGAS(KGAS)=2.0D0*EMASS/E2(2) 
+       RGAS(KGAS,NP)=RGAS2                                           
+       DSCRPT(KGAS,NP)=SCRP2(2)  
+       NAMEG(KGAS)=NAME2  
+      ELSE IF(KGAS.EQ.3) THEN
+       RGAS3=1.0D0+E3(2)/2.0D0 
+       AMGAS(KGAS)=2.0D0*EMASS/E3(2) 
+       RGAS(KGAS,NP)=RGAS3                                           
+       DSCRPT(KGAS,NP)=SCRP3(2)  
+       NAMEG(KGAS)=NAME3  
+      ELSE IF(KGAS.EQ.4) THEN
+       RGAS4=1.0D0+E4(2)/2.0D0 
+       AMGAS(KGAS)=2.0D0*EMASS/E4(2) 
+       RGAS(KGAS,NP)=RGAS4                                           
+       DSCRPT(KGAS,NP)=SCRP4(2)  
+       NAMEG(KGAS)=NAME4  
+      ELSE IF(KGAS.EQ.5) THEN
+       RGAS5=1.0D0+E5(2)/2.0D0 
+       AMGAS(KGAS)=2.0D0*EMASS/E5(2) 
+       RGAS(KGAS,NP)=RGAS5                                           
+       DSCRPT(KGAS,NP)=SCRP5(2)  
+       NAMEG(KGAS)=NAME5  
+      ELSE 
+       RGAS6=1.0D0+E6(2)/2.0D0 
+       AMGAS(KGAS)=2.0D0*EMASS/E6(2) 
+       RGAS(KGAS,NP)=RGAS6                                           
+       DSCRPT(KGAS,NP)=SCRP6(2)  
+       NAMEG(KGAS)=NAME6  
+      ENDIF    
+      L=1
+      IARRY(KGAS,NP)=L
+      EIN(KGAS,NP)=0.0D0
+      IPN(KGAS,NP)=0    
+      PENFRA(KGAS,1,NP)=0.0
+      PENFRA(KGAS,2,NP)=0.0
+      PENFRA(KGAS,3,NP)=0.0      
+C  IONISATION
+   12 IF(KGAS.EQ.1) THEN     
+       IF(EFINAL.LT.E1(3)) GO TO 50 
+       IF(NION1.GT.1) GO TO 14                                   
+       NP=NP+1   
+       CF(KGAS,IE,NP)=Q1(3,IE)*VAN1
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQEL1(3,IE) 
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL1(3,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       GO TO 16
+   14  DO 15 KION=1,NION1
+       NP=NP+1
+       CF(KGAS,IE,NP)=QION1(KION,IE)*VAN1
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP)
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQION1(KION,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQION1(KION,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+   15 CONTINUE
+   16 CONTINUE   
+      ELSE IF(KGAS.EQ.2) THEN
+       IF(EFINAL.LT.E2(3)) GO TO 50     
+       IF(NION2.GT.1) GO TO 17                                
+       NP=NP+1   
+       CF(KGAS,IE,NP)=Q2(3,IE)*VAN2
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL2(3).EQ.1) THEN
+        PSCT1=PEQEL2(3,IE) 
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL2(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL2(3,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       GO TO 19
+   17  DO 18 KION=1,NION2
+       NP=NP+1
+       CF(KGAS,IE,NP)=QION2(KION,IE)*VAN2
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP)
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQION2(KION,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQION2(KION,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+   18  CONTINUE
+   19  CONTINUE
+      ELSE IF(KGAS.EQ.3) THEN
+       IF(EFINAL.LT.E3(3)) GO TO 50  
+       IF(NION3.GT.1) GO TO 20                                  
+       NP=NP+1   
+       CF(KGAS,IE,NP)=Q3(3,IE)*VAN3
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL3(3).EQ.1) THEN
+        PSCT1=PEQEL3(3,IE) 
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL3(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL3(3,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       GO TO 22
+   20  DO 21 KION=1,NION3
+       NP=NP+1
+       CF(KGAS,IE,NP)=QION3(KION,IE)*VAN3
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP)
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQION3(KION,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQION3(KION,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+   21  CONTINUE
+   22  CONTINUE
+      ELSE IF(KGAS.EQ.4) THEN
+       IF(EFINAL.LT.E4(3)) GO TO 50   
+       IF(NION4.GT.1) GO TO 23                                 
+       NP=NP+1   
+       CF(KGAS,IE,NP)=Q4(3,IE)*VAN4
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL4(3).EQ.1) THEN
+        PSCT1=PEQEL4(3,IE) 
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL4(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL4(3,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       GO TO 25
+   23  DO 24 KION=1,NION4
+       NP=NP+1
+       CF(KGAS,IE,NP)=QION4(KION,IE)*VAN4
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP)
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQION4(KION,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQION4(KION,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+  24   CONTINUE
+  25   CONTINUE
+      ELSE IF(KGAS.EQ.5) THEN
+       IF(EFINAL.LT.E5(3)) GO TO 50 
+       IF(NION5.GT.1) GO TO 26                                   
+       NP=NP+1   
+       CF(KGAS,IE,NP)=Q5(3,IE)*VAN5
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL5(3).EQ.1) THEN
+        PSCT1=PEQEL5(3,IE) 
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL5(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL5(3,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       GO TO 28
+   26  DO 27 KION=1,NION5
+       NP=NP+1
+       CF(KGAS,IE,NP)=QION5(KION,IE)*VAN5
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP)
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQION5(KION,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQION5(KION,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+   27  CONTINUE
+   28  CONTINUE
+      ELSE 
+       IF(EFINAL.LT.E6(3)) GO TO 50  
+       IF(NION6.GT.1) GO TO 29                                  
+       NP=NP+1   
+       CF(KGAS,IE,NP)=Q6(3,IE)*VAN6
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL6(3).EQ.1) THEN
+        PSCT1=PEQEL6(3,IE) 
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL6(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQEL6(3,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+   29  DO 31 KION=1,NION6
+       NP=NP+1
+       CF(KGAS,IE,NP)=QION6(KION,IE)*VAN6
+       FCION(IE)=FCION(IE)+CF(KGAS,IE,NP)
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+       IF(KEL1(3).EQ.1) THEN
+        PSCT1=PEQION6(KION,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1
+       ENDIF
+       IF(KEL1(3).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQION6(KION,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+   31  CONTINUE
       ENDIF
 C
-      IF(IE.GT.1) GO TO 30                                     
-      RGAS(NP)=RGAS1                                                    
-      EIN(NP)=E1(3)/RGAS1
-      WPL(NP)=EB1                                                
-      IPN(NP)=1 
-      L=2                                                      
-      IARRY(NP)=L 
-      DSCRPT(NP)=SCRP1(3)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0 
-   30 IF(EFINAL.LT.E1(4)) GO TO 40                                      
-      NP=NP+1                                                           
-      CF(IE,NP)=Q1(4,IE)*VAN1
-      FCATT(IE)=FCATT(IE)+CF(IE,NP) 
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      IF(IE.GT.1) GO TO 40
-      INDEX(NP)=0                                     
-      RGAS(NP)=RGAS1                                                   
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=-1              
-      L=3                                           
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP1(4)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0
-   40 IF(NIN1.EQ.0) GO TO 60                                           
-      DO 50 J=1,NIN1
-      NP=NP+1                                                           
-      CF(IE,NP)=QIN1(J,IE)*VAN1
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KIN1(J).EQ.1) THEN   
-       PSCT1=PEQIN1(J,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1   
+      IF(IE.GT.1) GO TO 50
+      IF(KGAS.EQ.1) THEN 
+       IF(NION1.GT.1) GO TO 32                                    
+       RGAS(KGAS,NP)=RGAS1                                              
+       EIN(KGAS,NP)=E1(3)/RGAS1
+       WPL(KGAS,NP)=EB1
+       DSCRPT(KGAS,NP)=SCRP1(3)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+       GO TO 34
+   32  NP=NP-NION1
+       DO 33 KION=1,NION1
+       NP=NP+1
+       RGAS(KGAS,NP)=RGAS1
+       EIN(KGAS,NP)=EION1(KION)/RGAS1
+       WPL(KGAS,NP)=EB1
+       DSCRPT(KGAS,NP)=SCRP1(2+KION)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+   33  CONTINUE
+   34  CONTINUE
+      ELSE IF(KGAS.EQ.2) THEN
+       IF(NION2.GT.1) GO TO 35
+       RGAS(KGAS,NP)=RGAS2                                              
+       EIN(KGAS,NP)=E2(3)/RGAS2
+       WPL(KGAS,NP)=EB2
+       DSCRPT(KGAS,NP)=SCRP2(3)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+       GO TO 37
+   35  NP=NP-NION2
+       DO 36 KION=1,NION2
+       NP=NP+1
+       RGAS(KGAS,NP)=RGAS2
+       EIN(KGAS,NP)=EION2(KION)/RGAS2
+       WPL(KGAS,NP)=EB2   
+       DSCRPT(KGAS,NP)=SCRP2(2+KION)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+   36  CONTINUE
+   37  CONTINUE
+      ELSE IF(KGAS.EQ.3) THEN
+       IF(NION3.GT.1) GO TO 38
+       RGAS(KGAS,NP)=RGAS3                                              
+       EIN(KGAS,NP)=E3(3)/RGAS3
+       WPL(KGAS,NP)=EB3
+       DSCRPT(KGAS,NP)=SCRP3(3)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+       GO TO 40
+   38  NP=NP-NION3
+       DO 39 KION=1,NION3
+       NP=NP+1
+       RGAS(KGAS,NP)=RGAS3
+       EIN(KGAS,NP)=EION3(KION)/RGAS3
+       WPL(KGAS,NP)=EB3
+       DSCRPT(KGAS,NP)=SCRP3(2+KION)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+   39  CONTINUE
+   40  CONTINUE
+      ELSE IF(KGAS.EQ.4) THEN
+       IF(NION4.GT.1) GO TO 41
+       RGAS(KGAS,NP)=RGAS4                                              
+       EIN(KGAS,NP)=E4(3)/RGAS4
+       WPL(KGAS,NP)=EB4
+       DSCRPT(KGAS,NP)=SCRP4(3)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+       GO TO 43
+   41  NP=NP-NION4
+       DO 42 KION=1,NION4
+       NP=NP+1
+       RGAS(KGAS,NP)=RGAS4
+       EIN(KGAS,NP)=EION4(KION)/RGAS4
+       WPL(KGAS,NP)=EB4
+       DSCRPT(KGAS,NP)=SCRP4(2+KION)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+   42  CONTINUE
+   43  CONTINUE
+      ELSE IF(KGAS.EQ.5) THEN
+       IF(NION5.GT.1) GO TO 44
+       RGAS(KGAS,NP)=RGAS5                                              
+       EIN(KGAS,NP)=E5(3)/RGAS5
+       WPL(KGAS,NP)=EB5
+       DSCRPT(KGAS,NP)=SCRP5(3)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+       GO TO 46
+   44  NP=NP-NION5
+       DO 45 KION=1,NION5
+       NP=NP+1
+       RGAS(KGAS,NP)=RGAS5
+       EIN(KGAS,NP)=EION5(KION)/RGAS5
+       WPL(KGAS,NP)=EB5
+       DSCRPT(KGAS,NP)=SCRP5(2+KION)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+   45  CONTINUE
+   46  CONTINUE
+      ELSE 
+       IF(NION6.GT.1) GO TO 47
+       RGAS(KGAS,NP)=RGAS6                                              
+       EIN(KGAS,NP)=E6(3)/RGAS6
+       WPL(KGAS,NP)=EB6
+       DSCRPT(KGAS,NP)=SCRP6(3)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+       GO TO 49
+   47  NP=NP-NION6
+       DO 48 KION=1,NION6
+       NP=NP+1
+       RGAS(KGAS,NP)=RGAS6
+       EIN(KGAS,NP)=EION6(KION)/RGAS6
+       WPL(KGAS,NP)=EB6
+       DSCRPT(KGAS,NP)=SCRP6(2+KION)
+       IPN(KGAS,NP)=1
+       L=2
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+   48  CONTINUE
+   49  CONTINUE
+      ENDIF                                             
+C ATTACHMENT
+   50 IF(KGAS.EQ.1) THEN
+       IF(EFINAL.LT.E1(4)) GO TO 51                                   
+       NP=NP+1                                                         
+       CF(KGAS,IE,NP)=Q1(4,IE)*VAN1
+       FCATT(IE)=FCATT(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+      ELSE IF(KGAS.EQ.2) THEN
+       IF(EFINAL.LT.E2(4)) GO TO 51                                   
+       NP=NP+1                                                       
+       CF(KGAS,IE,NP)=Q2(4,IE)*VAN2
+       FCATT(IE)=FCATT(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+      ELSE IF(KGAS.EQ.3) THEN
+       IF(EFINAL.LT.E3(4)) GO TO 51                                   
+       NP=NP+1                                                         
+       CF(KGAS,IE,NP)=Q3(4,IE)*VAN3
+       FCATT(IE)=FCATT(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+      ELSE IF(KGAS.EQ.4) THEN
+       IF(EFINAL.LT.E4(4)) GO TO 51                                   
+       NP=NP+1                                                         
+       CF(KGAS,IE,NP)=Q4(4,IE)*VAN4
+       FCATT(IE)=FCATT(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+      ELSE IF(KGAS.EQ.5) THEN
+       IF(EFINAL.LT.E5(4)) GO TO 51                                   
+       NP=NP+1                                                         
+       CF(KGAS,IE,NP)=Q5(4,IE)*VAN5
+       FCATT(IE)=FCATT(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+      ELSE
+       IF(EFINAL.LT.E6(4)) GO TO 51                                   
+       NP=NP+1                                                         
+       CF(KGAS,IE,NP)=Q6(4,IE)*VAN6
+       FCATT(IE)=FCATT(IE)+CF(KGAS,IE,NP) 
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
       ENDIF
-      IF(KIN1(J).EQ.2) THEN
-       PSCT(IE,NP)=PEQIN1(J,IE)
-       INDEX(NP)=2
-      ENDIF
+      IF(IE.GT.1) GO TO 51
+      IF(KGAS.EQ.1) THEN
+       IF(NION1.LT.2) DSCRPT(KGAS,NP)=SCRP1(4)  
+       IF(NION1.GT.1) DSCRPT(KGAS,NP)=SCRP1(3+NION1)                 
+       RGAS(KGAS,NP)=RGAS1
+      ELSE IF(KGAS.EQ.2) THEN
+       IF(NION2.LT.2) DSCRPT(KGAS,NP)=SCRP2(4)                         
+       IF(NION2.GT.1) DSCRPT(KGAS,NP)=SCRP2(3+NION2)                 
+       RGAS(KGAS,NP)=RGAS2
+      ELSE IF(KGAS.EQ.3) THEN
+       IF(NION3.LT.2) DSCRPT(KGAS,NP)=SCRP3(4)                    
+       IF(NION3.GT.1) DSCRPT(KGAS,NP)=SCRP3(3+NION3)
+       RGAS(KGAS,NP)=RGAS3
+      ELSE IF(KGAS.EQ.4) THEN
+       IF(NION4.LT.2) DSCRPT(KGAS,NP)=SCRP4(4)                     
+       IF(NION4.GT.1) DSCRPT(KGAS,NP)=SCRP4(3+NION4)
+       RGAS(KGAS,NP)=RGAS4
+      ELSE IF(KGAS.EQ.5) THEN
+       IF(NION5.LT.2) DSCRPT(KGAS,NP)=SCRP5(4)                     
+       IF(NION5.GT.1) DSCRPT(KGAS,NP)=SCRP5(3+NION5)
+       RGAS(KGAS,NP)=RGAS5
+      ELSE 
+       IF(NION6.LT.2) DSCRPT(KGAS,NP)=SCRP5(4)                     
+       IF(NION6.GT.1) DSCRPT(KGAS,NP)=SCRP6(3+NION6)
+       RGAS(KGAS,NP)=RGAS5
+      ENDIF  
+       EIN(KGAS,NP)=0.0D0
+       INDEX(KGAS,NP)=0
+       IPN(KGAS,NP)=-1
+       L=3
+       IARRY(KGAS,NP)=L
+       PENFRA(KGAS,1,NP)=0.0
+       PENFRA(KGAS,2,NP)=0.0
+       PENFRA(KGAS,3,NP)=0.0
+C INELASTIC AND SUPERELASTIC
+   51 IF(KGAS.EQ.1) THEN
+       IF(NIN1.EQ.0) GO TO 70                                           
+       DO 52 J=1,NIN1
+       NP=NP+1                                                          
+       CF(KGAS,IE,NP)=QIN1(J,IE)*VAN1
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
 C
-      IF(IE.GT.1) GO TO 50                                     
-      RGAS(NP)=RGAS1                                                    
-      EIN(NP)=EI1(J)/RGAS1
-      L=4
-      IF(EI1(J).LT.0.0D0) L=5                                           
-      IPN(NP)=0  
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP1(6+J)
-      PENFRA(1,NP)=PENFRA1(1,J)
-      PENFRA(2,NP)=PENFRA1(2,J)*1.D-16/DSQRT(3.0D0)
-      PENFRA(3,NP)=PENFRA1(3,J)
-   50 CONTINUE                 
+       IF(KIN1(J).EQ.1) THEN   
+        PSCT1=PEQIN1(J,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KIN1(J).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQIN1(J,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       IF(IE.GT.1) GO TO 52                                     
+       RGAS(KGAS,NP)=RGAS1                                           
+       EIN(KGAS,NP)=EI1(J)/RGAS1
+       L=4
+       IF(EI1(J).LT.0.0D0) L=5                                          
+       IPN(KGAS,NP)=0  
+       IARRY(KGAS,NP)=L
+       IF(NION1.LT.2) DSCRPT(KGAS,NP)=SCRP1(6+J)
+       IF(NION1.GT.1) DSCRPT(KGAS,NP)=SCRP1(5+NION1+J)
+       PENFRA(KGAS,1,NP)=PENFRA1(1,J)
+       PENFRA(KGAS,2,NP)=PENFRA1(2,J)*1.D-16/DSQRT(3.0D0)
+       PENFRA(KGAS,3,NP)=PENFRA1(3,J)
+   52  CONTINUE                 
+      ELSE IF(KGAS.EQ.2) THEN
+       IF(NIN2.EQ.0) GO TO 70                                           
+       DO 53 J=1,NIN2
+       NP=NP+1                                                          
+       CF(KGAS,IE,NP)=QIN2(J,IE)*VAN2
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+C
+       IF(KIN2(J).EQ.1) THEN   
+        PSCT1=PEQIN2(J,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KIN2(J).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQIN2(J,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       IF(IE.GT.1) GO TO 53                                     
+       RGAS(KGAS,NP)=RGAS2                                           
+       EIN(KGAS,NP)=EI2(J)/RGAS2
+       L=4
+       IF(EI2(J).LT.0.0D0) L=5                                          
+       IPN(KGAS,NP)=0  
+       IARRY(KGAS,NP)=L
+       IF(NION2.LT.2) DSCRPT(KGAS,NP)=SCRP2(6+J)
+       IF(NION2.GT.1) DSCRPT(KGAS,NP)=SCRP2(5+NION2+J)
+       PENFRA(KGAS,1,NP)=PENFRA2(1,J)
+       PENFRA(KGAS,2,NP)=PENFRA2(2,J)*1.D-16/DSQRT(3.0D0)
+       PENFRA(KGAS,3,NP)=PENFRA2(3,J)
+   53  CONTINUE                 
+      ELSE IF(KGAS.EQ.3) THEN
+       IF(NIN3.EQ.0) GO TO 70                                           
+       DO 54 J=1,NIN3
+       NP=NP+1                                                          
+       CF(KGAS,IE,NP)=QIN3(J,IE)*VAN3
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+C
+       IF(KIN3(J).EQ.1) THEN   
+        PSCT1=PEQIN3(J,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KIN3(J).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQIN3(J,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       IF(IE.GT.1) GO TO 54                                     
+       RGAS(KGAS,NP)=RGAS3                                           
+       EIN(KGAS,NP)=EI3(J)/RGAS3
+       L=4
+       IF(EI3(J).LT.0.0D0) L=5                                          
+       IPN(KGAS,NP)=0  
+       IARRY(KGAS,NP)=L
+       IF(NION3.LT.2) DSCRPT(KGAS,NP)=SCRP3(6+J)
+       IF(NION3.GT.1) DSCRPT(KGAS,NP)=SCRP3(5+NION3+J)
+       PENFRA(KGAS,1,NP)=PENFRA3(1,J)
+       PENFRA(KGAS,2,NP)=PENFRA3(2,J)*1.D-16/DSQRT(3.0D0)
+       PENFRA(KGAS,3,NP)=PENFRA3(3,J)
+   54  CONTINUE                 
+      ELSE IF(KGAS.EQ.4) THEN
+       IF(NIN4.EQ.0) GO TO 70                                           
+       DO 55 J=1,NIN4
+       NP=NP+1                                                          
+       CF(KGAS,IE,NP)=QIN4(J,IE)*VAN4
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+C
+       IF(KIN4(J).EQ.1) THEN   
+        PSCT1=PEQIN4(J,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KIN4(J).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQIN4(J,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       IF(IE.GT.1) GO TO 55                                     
+       RGAS(KGAS,NP)=RGAS4                                           
+       EIN(KGAS,NP)=EI4(J)/RGAS4
+       L=4
+       IF(EI4(J).LT.0.0D0) L=5                                          
+       IPN(KGAS,NP)=0  
+       IARRY(KGAS,NP)=L
+       IF(NION4.LT.2) DSCRPT(KGAS,NP)=SCRP4(6+J)
+       IF(NION4.GT.1) DSCRPT(KGAS,NP)=SCRP4(5+NION4+J)
+       PENFRA(KGAS,1,NP)=PENFRA4(1,J)
+       PENFRA(KGAS,2,NP)=PENFRA4(2,J)*1.D-16/DSQRT(3.0D0)
+       PENFRA(KGAS,3,NP)=PENFRA4(3,J)
+   55  CONTINUE                 
+      ELSE IF(KGAS.EQ.5) THEN
+       IF(NIN5.EQ.0) GO TO 70                                           
+       DO 56 J=1,NIN5
+       NP=NP+1                                                          
+       CF(KGAS,IE,NP)=QIN5(J,IE)*VAN5
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+C
+       IF(KIN5(J).EQ.1) THEN   
+        PSCT1=PEQIN5(J,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KIN5(J).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQIN5(J,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       IF(IE.GT.1) GO TO 56                                     
+       RGAS(KGAS,NP)=RGAS5                                           
+       EIN(KGAS,NP)=EI5(J)/RGAS5
+       L=4
+       IF(EI5(J).LT.0.0D0) L=5                                          
+       IPN(KGAS,NP)=0  
+       IARRY(KGAS,NP)=L
+       IF(NION5.LT.2) DSCRPT(KGAS,NP)=SCRP5(6+J)
+       IF(NION5.GT.1) DSCRPT(KGAS,NP)=SCRP5(5+NION5+J)
+       PENFRA(KGAS,1,NP)=PENFRA5(1,J)
+       PENFRA(KGAS,2,NP)=PENFRA5(2,J)*1.D-16/DSQRT(3.0D0)
+       PENFRA(KGAS,3,NP)=PENFRA5(3,J)
+   56  CONTINUE                 
+      ELSE 
+       IF(NIN6.EQ.0) GO TO 70                                           
+       DO 57 J=1,NIN6
+       NP=NP+1                                                          
+       CF(KGAS,IE,NP)=QIN6(J,IE)*VAN6
+       PSCT(KGAS,IE,NP)=0.5D0
+       ANGCT(KGAS,IE,NP)=1.0D0
+       INDEX(KGAS,NP)=0
+C
+       IF(KIN6(J).EQ.1) THEN   
+        PSCT1=PEQIN6(J,IE)
+        CALL ANGCUT(PSCT1,ANGC,PSCT2)
+        ANGCT(KGAS,IE,NP)=ANGC
+        PSCT(KGAS,IE,NP)=PSCT2
+        INDEX(KGAS,NP)=1   
+       ENDIF
+       IF(KIN6(J).EQ.2) THEN
+        PSCT(KGAS,IE,NP)=PEQIN6(J,IE)
+        INDEX(KGAS,NP)=2
+       ENDIF
+       IF(IE.GT.1) GO TO 57                                     
+       RGAS(KGAS,NP)=RGAS6                                           
+       EIN(KGAS,NP)=EI6(J)/RGAS6
+       L=4
+       IF(EI6(J).LT.0.0D0) L=5                                          
+       IPN(KGAS,NP)=0  
+       IARRY(KGAS,NP)=L
+       IF(NION6.LT.2) DSCRPT(KGAS,NP)=SCRP6(6+J)
+       IF(NION6.GT.1) DSCRPT(KGAS,NP)=SCRP6(5+NION6+J)
+       PENFRA(KGAS,1,NP)=PENFRA6(1,J)
+       PENFRA(KGAS,2,NP)=PENFRA6(2,J)*1.D-16/DSQRT(3.0D0)
+       PENFRA(KGAS,3,NP)=PENFRA6(3,J)
+   57  CONTINUE
+      ENDIF      
 C                                       
-   60 IF(NGAS.EQ.1) GO TO 600
-      NP=NP+1                                                           
-      CF(IE,NP)=Q2(2,IE)*VAN2
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KEL2(2).EQ.1) THEN
-       PSCT1=PEQEL2(2,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KEL2(2).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL2(2,IE)
-       INDEX(NP)=2
-      ENDIF 
-C
-      IF(IE.GT.1) GO TO 62                                     
-      RGAS2=1.0D0+E2(2)/2.0D0                                           
-      RGAS(NP)=RGAS2                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=0
-      L=6                                                          
-      IARRY(NP)=L      
-      DSCRPT(NP)=SCRP2(2)  
-      NAMEG(2)=NAME2 
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-   62 IF(EFINAL.LT.E2(3)) GO TO 130                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q2(3,IE)*VAN2
-      FCION(IE)=FCION(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KEL2(3).EQ.1) THEN
-       PSCT1=PEQEL2(3,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KEL2(3).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL2(3,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 130                                      
-      RGAS(NP)=RGAS2                                                    
-      EIN(NP)=E2(3)/RGAS2 
-      WPL(NP)=EB2                                               
-      IPN(NP)=1  
-      L=7                                                        
-      IARRY(NP)=L      
-      DSCRPT(NP)=SCRP2(3)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  130 IF(EFINAL.LT.E2(4)) GO TO 140                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q2(4,IE)*VAN2
-      FCATT(IE)=FCATT(IE)+CF(IE,NP)  
-      IF(IE.GT.1) GO TO 140 
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0                                  
-      RGAS(NP)=RGAS2                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=-1            
-      L=8                                              
-      IARRY(NP)=L      
-      DSCRPT(NP)=SCRP2(4)  
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                             
-  140 IF(NIN2.EQ.0) GO TO 160                                           
-      DO 150 J=1,NIN2
-      NP=NP+1                                                           
-      CF(IE,NP)=QIN2(J,IE)*VAN2
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KIN2(J).EQ.1) THEN
-       PSCT1=PEQIN2(J,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      IF(KIN2(J).EQ.2) THEN
-       PSCT(IE,NP)=PEQIN2(J,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      ENDIF
-      IF(IE.GT.1) GO TO 150                                    
-      RGAS(NP)=RGAS2                                                    
-      EIN(NP)=EI2(J)/RGAS2
-      L=9 
-      IF(EI2(J).LT.0.0D0) L=10                                          
-      IPN(NP)=0         
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP2(6+J)
-      PENFRA(1,NP)=PENFRA2(1,J)
-      PENFRA(2,NP)=PENFRA2(2,J)*1.D-6/DSQRT(3.0D0)
-      PENFRA(3,NP)=PENFRA2(3,J)
-  150 CONTINUE                 
-C                                       
-  160 IF(NGAS.EQ.2) GO TO 600
-      NP=NP+1                                                           
-      CF(IE,NP)=Q3(2,IE)*VAN3
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C       
-      IF(KEL3(2).EQ.1) THEN
-       PSCT1=PEQEL3(2,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF 
-      IF(KEL3(2).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL3(2,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 162                                     
-      RGAS3=1.0D0+E3(2)/2.0D0                                           
-      RGAS(NP)=RGAS3                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=0  
-      L=11                                                        
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP3(2)
-      NAMEG(3)=NAME3 
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                                 
-  162 IF(EFINAL.LT.E3(3)) GO TO 230                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q3(3,IE)*VAN3
-      FCION(IE)=FCION(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KEL3(3).EQ.1) THEN
-       PSCT1=PEQEL3(3,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KEL3(3).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL3(3,IE)
-       INDEX(NP)=2
-      ENDIF 
-C 
-      IF(IE.GT.1) GO TO 230                                            
-      RGAS(NP)=RGAS3                                                    
-      EIN(NP)=E3(3)/RGAS3 
-      WPL(NP)=EB3                                               
-      IPN(NP)=1
-      L=12                                                           
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP3(3)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  230 IF(EFINAL.LT.E3(4)) GO TO 240                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q3(4,IE)*VAN3
-      FCATT(IE)=FCATT(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      IF(IE.GT.1) GO TO 240
-      INDEX(NP)=0                                            
-      RGAS(NP)=RGAS3                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=-1 
-      L=13                                                        
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP3(4)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  240 IF(NIN3.EQ.0) GO TO 260                                           
-      DO 250 J=1,NIN3 
-      NP=NP+1                                                           
-      CF(IE,NP)=QIN3(J,IE)*VAN3
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KIN3(J).EQ.1) THEN
-       PSCT1=PEQIN3(J,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KIN3(J).EQ.2) THEN
-       PSCT(IE,NP)=PEQIN3(J,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 250                                     
-      RGAS(NP)=RGAS3                                                    
-      EIN(NP)=EI3(J)/RGAS3
-      L=14
-      IF(EI3(J).LT.0.0D0) L=15                                          
-      IPN(NP)=0
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP3(6+J)  
-      PENFRA(1,NP)=PENFRA3(1,J)
-      PENFRA(2,NP)=PENFRA3(2,J)*1.D-6/DSQRT(3.0D0)
-      PENFRA(3,NP)=PENFRA3(3,J)                                   
-  250 CONTINUE
-C                              
-  260 IF(NGAS.EQ.3) GO TO 600  
-      NP=NP+1                                                           
-      CF(IE,NP)=Q4(2,IE)*VAN4 
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KEL4(2).EQ.1) THEN
-       PSCT1=PEQEL4(2,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1  
-      ENDIF 
-      IF(KEL4(2).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL4(2,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 262                                    
-      RGAS4=1.0D0+E4(2)/2.0D0                                           
-      RGAS(NP)=RGAS4                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=0
-      L=16                                                          
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP4(2)
-      NAMEG(4)=NAME4 
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  262 IF(EFINAL.LT.E4(3)) GO TO 330                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q4(3,IE)*VAN4
-      FCION(IE)=FCION(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0  
-C
-      IF(KEL4(3).EQ.1) THEN
-       PSCT1=PEQEL4(3,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KEL4(3).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL4(3,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 330                                     
-      RGAS(NP)=RGAS4                                                    
-      EIN(NP)=E4(3)/RGAS4 
-      WPL(NP)=EB4                                               
-      IPN(NP)=1  
-      L=17                                                        
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP4(3)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  330 IF(EFINAL.LT.E4(4)) GO TO 340                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q4(4,IE)*VAN4
-      FCATT(IE)=FCATT(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      IF(IE.GT.1) GO TO 340        
-      INDEX(NP)=0                             
-      RGAS(NP)=RGAS4                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=-1 
-      L=18                                                        
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP4(4)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  340 IF(NIN4.EQ.0) GO TO 360                                           
-      DO 350 J=1,NIN4 
-      NP=NP+1
-      CF(IE,NP)=QIN4(J,IE)*VAN4
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KIN4(J).EQ.1) THEN
-       PSCT1=PEQIN4(J,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KIN4(J).EQ.2) THEN
-       PSCT(IE,NP)=PEQIN4(J,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 350        
-      RGAS(NP)=RGAS4                                                    
-      EIN(NP)=EI4(J)/RGAS4
-      L=19
-      IF(EI4(J).LT.0.0D0) L=20                                          
-      IPN(NP)=0         
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP4(6+J)
-      PENFRA(1,NP)=PENFRA4(1,J)
-      PENFRA(2,NP)=PENFRA4(2,J)*1.D-6/DSQRT(3.0D0)
-      PENFRA(3,NP)=PENFRA4(3,J)
-  350 CONTINUE   
-C                                                     
-  360 IF(NGAS.EQ.4) GO TO 600  
-      NP=NP+1                                                           
-      CF(IE,NP)=Q5(2,IE)*VAN5 
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KEL5(2).EQ.1) THEN 
-       PSCT1=PEQEL5(2,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF 
-      IF(KEL5(2).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL5(2,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 362                                    
-      RGAS5=1.0D0+E5(2)/2.0D0                                           
-      RGAS(NP)=RGAS5                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=0
-      L=21                                                          
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP5(2) 
-      NAMEG(5)=NAME5  
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                                  
-  362 IF(EFINAL.LT.E5(3)) GO TO 430                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q5(3,IE)*VAN5
-      FCION(IE)=FCION(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0 
-C
-      IF(KEL5(3).EQ.1) THEN
-       PSCT1=PEQEL5(3,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF 
-      IF(KEL5(3).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL5(3,IE)
-       INDEX(NP)=2
-      ENDIF
-C     
-      IF(IE.GT.1) GO TO 430                                    
-      RGAS(NP)=RGAS5                                                    
-      EIN(NP)=E5(3)/RGAS5 
-      WPL(NP)=EB5                                               
-      IPN(NP)=1
-      L=22                                                          
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP5(3)  
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                             
-  430 IF(EFINAL.LT.E5(4)) GO TO 440                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q5(4,IE)*VAN5
-      FCATT(IE)=FCATT(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      IF(IE.GT.1) GO TO 440
-      INDEX(NP)=0                                     
-      RGAS(NP)=RGAS5                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=-1             
-      L=23                                            
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP5(4)  
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                             
-  440 IF(NIN5.EQ.0) GO TO 460                                           
-      DO 450 J=1,NIN5 
-      NP=NP+1                                                           
-      CF(IE,NP)=QIN5(J,IE)*VAN5 
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KIN5(J).EQ.1) THEN
-       PSCT1=PEQIN5(J,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KIN5(J).EQ.2) THEN
-       PSCT(IE,NP)=PEQIN5(J,IE)
-       INDEX(NP)=2
-      ENDIF   
-C       
-      IF(IE.GT.1) GO TO 450
-      RGAS(NP)=RGAS5                                                    
-      EIN(NP)=EI5(J)/RGAS5
-      L=24
-      IF(EI5(J).LT.0.0D0) L=25                                          
-      IPN(NP)=0         
-      IARRY(NP)=L
-      DSCRPT(NP)=SCRP5(6+J)
-      PENFRA(1,NP)=PENFRA5(1,J)
-      PENFRA(2,NP)=PENFRA5(2,J)*1.D-6/DSQRT(3.0D0)
-      PENFRA(3,NP)=PENFRA5(3,J)
-  450 CONTINUE                 
-C                                       
-  460 IF(NGAS.EQ.5) GO TO 600  
-      NP=NP+1                                                           
-      CF(IE,NP)=Q6(2,IE)*VAN6
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0 
-C
-      IF(KEL6(2).EQ.1) THEN
-       PSCT1=PEQEL6(2,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KEL6(2).EQ.2) THEN
-       PSCT(IE,NP)=PEQEL6(2,IE)
-       INDEX(NP)=2
-      ENDIF
-C  
-      IF(IE.GT.1) GO TO 462                                    
-      RGAS6=1.0D0+E6(2)/2.0D0                                           
-      RGAS(NP)=RGAS6                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=0
-      L=26                                                          
-      IARRY(NP)=L  
-      DSCRPT(NP)=SCRP6(2) 
-      NAMEG(6)=NAME6
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                            
-  462 IF(EFINAL.LT.E6(3)) GO TO 530                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q6(3,IE)*VAN6
-      FCION(IE)=FCION(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0
-C
-      IF(KEL6(3).EQ.1) THEN
-       PSCT1=PEQEL6(3,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1      
-      ENDIF
-      IF(KEL6(3).EQ.2) THEN 
-       PSCT(IE,NP)=PEQEL6(3,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 530                                     
-      RGAS(NP)=RGAS6                                                    
-      EIN(NP)=E6(3)/RGAS6 
-      WPL(NP)=EB6                                               
-      IPN(NP)=1             
-      L=27                                             
-      IARRY(NP)=L  
-      DSCRPT(NP)=SCRP6(3)  
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                             
-  530 IF(EFINAL.LT.E6(4)) GO TO 540                                     
-      NP=NP+1                                                           
-      CF(IE,NP)=Q6(4,IE)*VAN6 
-      FCATT(IE)=FCATT(IE)+CF(IE,NP)
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      IF(IE.GT.1) GO TO 540        
-      INDEX(NP)=0                            
-      RGAS(NP)=RGAS6                                                    
-      EIN(NP)=0.0D0                                                     
-      IPN(NP)=-1
-      L=28                                                          
-      IARRY(NP)=L  
-      DSCRPT(NP)=SCRP6(4)
-      PENFRA(1,NP)=0.0
-      PENFRA(2,NP)=0.0
-      PENFRA(3,NP)=0.0                                               
-  540 IF(NIN6.EQ.0) GO TO 560                                           
-      DO 550 J=1,NIN6 
-      NP=NP+1                                                           
-      CF(IE,NP)=QIN6(J,IE)*VAN6
-      PSCT(IE,NP)=0.5D0
-      ANGCT(IE,NP)=1.0D0
-      INDEX(NP)=0 
-C
-      IF(KIN6(J).EQ.1) THEN
-       PSCT1=PEQIN6(J,IE)
-       CALL ANGCUT(PSCT1,ANGC,PSCT2)
-       ANGCT(IE,NP)=ANGC
-       PSCT(IE,NP)=PSCT2
-       INDEX(NP)=1
-      ENDIF
-      IF(KIN6(J).EQ.2) THEN
-       PSCT(IE,NP)=PEQIN6(J,IE)
-       INDEX(NP)=2
-      ENDIF
-C
-      IF(IE.GT.1) GO TO 550          
-      RGAS(NP)=RGAS6                                                    
-      EIN(NP)=EI6(J)/RGAS6
-      L=29
-      IF(EI6(J).LT.0.0D0) L=30                                          
-      IPN(NP)=0         
-      IARRY(NP)=L  
-      DSCRPT(NP)=SCRP6(6+J) 
-      PENFRA(1,NP)=PENFRA6(1,J)
-      PENFRA(2,NP)=PENFRA6(2,J)*1.D-6/DSQRT(3.0D0)
-      PENFRA(3,NP)=PENFRA6(3,J)
-  550 CONTINUE                                                     
-  560 CONTINUE     
-C                                                                       
-  600 CONTINUE                                                          
-      IPLAST=NP 
-      ISIZE=1
-      IF(IPLAST.GE.2)   ISIZE=2   
-      IF(IPLAST.GE.4)   ISIZE=4
-      IF(IPLAST.GE.8)   ISIZE=8
-      IF(IPLAST.GE.16)  ISIZE=16  
-      IF(IPLAST.GE.32)  ISIZE=32
-      IF(IPLAST.GE.64)  ISIZE=64
-      IF(IPLAST.GE.128) ISIZE=128
-      IF(IPLAST.GE.256) ISIZE=256
-      IF(IPLAST.GE.512) ISIZE=512
-      IF(IPLAST.GE.1024)ISIZE=1024          
+   70 CONTINUE 
+      IPLAST(KGAS)=NP 
+      ISIZE(KGAS)=1
+      IF(IPLAST(KGAS).GE.2)   ISIZE(KGAS)=2   
+      IF(IPLAST(KGAS).GE.4)   ISIZE(KGAS)=4
+      IF(IPLAST(KGAS).GE.8)   ISIZE(KGAS)=8
+      IF(IPLAST(KGAS).GE.16)  ISIZE(KGAS)=16  
+      IF(IPLAST(KGAS).GE.32)  ISIZE(KGAS)=32
+      IF(IPLAST(KGAS).GE.64)  ISIZE(KGAS)=64
+      IF(IPLAST(KGAS).GE.128) ISIZE(KGAS)=128
+      IF(IPLAST(KGAS).GE.256) ISIZE(KGAS)=256
 C ----------------------------------------------------------------      
-C   CAN INCREASE ARRAY SIZE UP TO 1356 IF MORE COMPLEX MIXTURES USED.
-C   1356 = 6 * 226 ( 6 = MAX NO OF GASES. 226 = MAX NO OF LEVELS )    
-C ------------------------------------------------------------------    
-      IF(IPLAST.GT.512) WRITE(6,992)                                    
-  992 FORMAT(/,/,6X,'WARNING TOO MANY LEVELS IN CALCULATION. CAN INCREAS
-     /E THE ARRAY SIZES FROM 512 UP TO 1356 MAXIMUM',/)                 
-      IF(IPLAST.GT.512) STOP                                            
-C --------------------------------------------------------------------  
-C     CALCULATION OF TOTAL COLLISION FREQUENCY                          
+C     CALCULATION OF TOTAL COLLISION FREQUENCY FOR EACH GAS COMPONENT  
 C --------------------------------------------------------------------- 
-      TCF(IE)=0.0D0                                                     
-      DO 610 IF=1,IPLAST                                                
-      TCF(IE)=TCF(IE)+CF(IE,IF)
-      IF(CF(IE,IF).LT.0.0D0) WRITE(6,776) CF(IE,IF),IE,IF,IARRY(IF),EIN
-     /(IF) 
-  776 FORMAT('  WARNING NEGATIVE COLLISION FEQUENCY =',D12.3,' IE =',I6,
-     /' IF =',I3,' IARRY=',I5,' EIN=',F7.4)                             
+      TCF(KGAS,IE)=0.0D0                                              
+      DO 610 IF=1,IPLAST(KGAS)                                         
+      TCF(KGAS,IE)=TCF(KGAS,IE)+CF(KGAS,IE,IF)
+      IF(CF(KGAS,IE,IF).LT.0.0D0) WRITE(6,776) CF(KGAS,IE,IF),KGAS,IE,IF
+     /,IARRY(KGAS,IF),EIN(KGAS,IF) 
+  776 FORMAT('  WARNING NEGATIVE COLLISION FEQUENCY =',D12.3,' KGAS =',
+     /I2,' IE =',I6,' IF =',I3,' IARRY=',I5,' EIN=',F7.4)              
  610  CONTINUE                                                          
-      DO 620 IF=1,IPLAST                                                
-      IF(TCF(IE).EQ.0.0D0) GO TO 615                                    
-      CF(IE,IF)=CF(IE,IF)/TCF(IE)                                       
+      DO 620 IF=1,IPLAST(KGAS)                                         
+      IF(TCF(KGAS,IE).EQ.0.0D0) GO TO 615                              
+      CF(KGAS,IE,IF)=CF(KGAS,IE,IF)/TCF(KGAS,IE)                       
       GO TO 620                                                         
- 615  CF(IE,IF)=0.0D0                                                   
+ 615  CF(KGAS,IE,IF)=0.0D0                                             
  620  CONTINUE                                                          
-      DO 630 IF=2,IPLAST                                                
-      CF(IE,IF)=CF(IE,IF)+CF(IE,IF-1)                                   
+      DO 630 IF=2,IPLAST(KGAS)                                          
+      CF(KGAS,IE,IF)=CF(KGAS,IE,IF)+CF(KGAS,IE,IF-1)                    
  630  CONTINUE                   
       FCATT(IE)=FCATT(IE)*EROOT(IE)
       FCION(IE)=FCION(IE)*EROOT(IE)                                     
-      TCF(IE)=TCF(IE)*EROOT(IE)   
+      TCF(KGAS,IE)=TCF(KGAS,IE)*EROOT(IE)   
  700  CONTINUE 
-C     WRITE(6,841) (INDEX(J),J, J=1,IPLAST)
-C 841 FORMAT(2X,' INDEX=',I3,' J=',I3)                                  
+C     WRITE(6,841) (INDEX(KGAS,J),J,KGAS, J=1,IPLAST(KGAS))
+C 841 FORMAT(2X,' INDEX=',I3,' J=',I3,' KGAS=',I2)                                  
 C  SET ANISOTROPIC FLAG IF ANISOTROPIC SCATTERING DATA IS DETECTED
       KELSUM=0
       DO 701 J=1,6
  701  KELSUM=KELSUM+KEL1(J)+KEL2(J)+KEL3(J)+KEL4(J)+KEL5(J)+KEL6(J)
-      DO 702 J=1,220
+      DO 702 J=1,250
  702  KELSUM=KELSUM+KIN1(J)+KIN2(J)+KIN3(J)+KIN4(J)+KIN5(J)+KIN6(J)
       IF(KELSUM.GT.0) NISO=1  
 C     IF(NISO.EQ.1) WRITE(6,7765) NISO
 C7765 FORMAT(3X,' ANISOTROPIC SCATTERING DETECTED NISO=',I5)            
 C -------------------------------------------------------------------   
-C   CALCULATE NULL COLLISION FREQUENCY                                  
+C   CALCULATE NULL COLLISION FREQUENCIES FOR EACH GAS COMPONENT                                  
 C -------------------------------------------------------------------   
-      BP=EFIELD*EFIELD*CONST1                                           
-      F2=EFIELD*CONST3                                                  
-      ELOW=TMAX*(TMAX*BP-F2*DSQRT(0.5D0*EFINAL))/ESTEP-1.0D0            
-      ELOW=DMIN1(ELOW,SMALL)                                            
-      EHI=TMAX*(TMAX*BP+F2*DSQRT(0.5D0*EFINAL))/ESTEP+1.0D0
-      IF(EHI.GT.10000.D0) EHI=10000.D0 
-      DO 810 I=1,8                                                      
-      JLOW=4000-500*(9-I)+1+DINT(ELOW)                                  
-      JHI=4000-500*(8-I)+DINT(EHI)
-      JLOW=DMAX0(JLOW,NONE)                                           
-      JHI=DMIN0(JHI,N4000)
-      DO 800 J=JLOW,JHI
-      IF(TCF(J).GE.TCFMAX(I)) TCFMAX(I)=TCF(J)                          
-  800 CONTINUE                                                          
-  810 CONTINUE                                                          
+      DO 800 KGAS=1,NGAS
+      TCFMAX(KGAS)=0.0D0
+      DO 800 IE=1,4000
+      IF(TCF(KGAS,IE).GE.TCFMAX(KGAS)) TCFMAX(KGAS)=TCF(KGAS,IE)       
+  800 CONTINUE                                        
+C CALCULATE EACH GAS CUMULATIVE FRACTIONAL NULL COLLISION FREQUENCIES
+      TCFMX=0.0D0
+      DO 810 KGAS=1,NGAS
+  810 TCFMX=TCFMX+TCFMAX(KGAS) 
+      DO 811 KGAS=1,NGAS
+  811 TCFMXG(KGAS)=TCFMAX(KGAS)/TCFMX
+      DO 812 KGAS=2,NGAS
+  812 TCFMXG(KGAS)=TCFMXG(KGAS)+TCFMXG(KGAS-1)
+C CALCULATE MAXWELL BOLTZMAN VELOCITY FACTOR FOR EACH GAS COMPONENT
+      DO 813 KGAS=1,NGAS
+  813 VTMB(KGAS)=DSQRT(2.0D0*ECHARG*AKT/AMGAS(KGAS))*1.D-12            
 C -------------------------------------------------------------------   
 C   CROSS SECTION DATA FOR INTEGRALS IN  OUTPUT               
 C --------------------------------------------------------------------- 
@@ -1339,260 +1594,303 @@ C
       RETURN                                                            
       END 
       SUBROUTINE GASMIX(NGS,Q,QIN,NIN,E,EI,NAME,VIRL,EB,
-     /PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z) 
       IMPLICIT INTEGER*8 (I-N)
-      CHARACTER*15 NAME       
-      CHARACTER*30 SCRPT(226)                       
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EI(220),KIN(220)           
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KEL(6),PENFRA(3,220)
+      CHARACTER*25 NAME       
+      CHARACTER*50 SCRPT(260)                       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EI(250),KIN(250) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)          
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KEL(6),PENFRA(3,250)
 C 
       GO TO (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
      /21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
      /41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,    
      /61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80) NGS
     1 CALL GAS1(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
     2 CALL GAS2(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
     3 CALL GAS3(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
     4 CALL GAS4(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN  
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
     5 CALL GAS5(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
     6 CALL GAS6(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN  
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
     7 CALL GAS7(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
     8 CALL GAS8(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
     9 CALL GAS9(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
    10 CALL GAS10(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN  
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    11 CALL GAS11(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN    
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    12 CALL GAS12(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    13 CALL GAS13(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    14 CALL GAS14(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    15 CALL GAS15(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    16 CALL GAS16(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    17 CALL GAS17(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
    18 CALL GAS18(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
    19 CALL GAS19(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN    
    20 CALL GAS20(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
    21 CALL GAS21(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    22 CALL GAS22(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN  
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    23 CALL GAS23(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    24 CALL GAS24(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN  
    25 CALL GAS25(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    26 CALL GAS26(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    27 CALL GAS27(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    28 CALL GAS28(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    29 CALL GAS29(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    30 CALL GAS30(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    31 CALL GAS31(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    32 CALL GAS32(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT) 
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    33 CALL GAS33(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    34 CALL GAS34(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    35 CALL GAS35(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    36 CALL GAS36(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    37 CALL GAS37(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    38 CALL GAS38(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    39 CALL GAS39(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    40 CALL GAS40(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    41 CALL GAS41(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    42 CALL GAS42(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN 
    43 CALL GAS43(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    44 CALL GAS44(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    45 CALL GAS45(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    46 CALL GAS46(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    47 CALL GAS47(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    48 CALL GAS48(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    49 CALL GAS49(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    50 CALL GAS50(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    51 CALL GAS51(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    52 CALL GAS52(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    53 CALL GAS53(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    54 CALL GAS54(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    55 CALL GAS55(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    56 CALL GAS56(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    57 CALL GAS57(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    58 CALL GAS58(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    59 CALL GAS59(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    60 CALL GAS60(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT) 
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    61 CALL GAS61(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    62 CALL GAS62(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
-      RETURN
+     /QION,PEQION,EION,NION,SCRPT)
+      RETURN   
    63 CALL GAS63(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    64 CALL GAS64(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    65 CALL GAS65(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    66 CALL GAS66(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    67 CALL GAS67(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    68 CALL GAS68(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    69 CALL GAS69(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    70 CALL GAS70(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    71 CALL GAS71(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    72 CALL GAS72(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    73 CALL GAS73(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    74 CALL GAS74(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    75 CALL GAS75(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    76 CALL GAS76(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    77 CALL GAS77(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    78 CALL GAS78(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN
    79 CALL GAS79(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT)
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN   
    80 CALL GAS80(Q,QIN,NIN,E,EI,NAME,VIRL,EB,PEQEL,PEQIN,PENFRA,KEL,KIN,
-     /SCRPT) 
+     /QION,PEQION,EION,NION,SCRPT)
       RETURN                  
+      END
+      SUBROUTINE READIN(LAST)
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/GASN/NGASN(6)                                         
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG 
+      COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)   
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+C            
+C      READ IN OUTPUT CONTROL AND INTEGRATION DATA                      
+C                                                                       
+      READ(5,2) NGAS,NMAX,IPEN,ITHRM,EFINAL                  
+    2 FORMAT(4I10,F10.5)                                           
+      IF(NGAS.EQ.0) GO TO 99
+C 
+C   GAS IDENTIFIERS 
+C
+      READ(5,3) NGASN(1),NGASN(2),NGASN(3),NGASN(4),NGASN(5),NGASN(6)
+    3 FORMAT(6I5)        
+C      
+C      GAS PARAMETERS
+C
+      READ(5,4) FRAC(1),FRAC(2),FRAC(3),FRAC(4),FRAC(5),FRAC(6),TEMPC,
+     /TORR                       
+    4 FORMAT(8F10.4)      
+C                                                  
+C      FIELD VALUES                                           
+C                                                                       
+      READ(5,5) EFIELD,BMAG,BTHETA                                      
+    5 FORMAT(3F10.3)
+C   CHECK INPUT
+C     IF(NGAS.EQ.1.AND.IPEN.EQ.1) THEN
+C     WRITE(6,992) 
+C 992 FORMAT(' PROGRAM STOPPED IT IS NOT POSSIBLE TO HAVE PENNING TRANSF
+C    /ERS IN PURE GASES.',/,' ONLY MIXTURES ALLOWED WITH IPEN=1')
+C     STOP
+      LAST=0
+      RETURN
+  99  LAST=1
+      RETURN
       END     
-      SUBROUTINE SETUP(LAST)                                            
+      SUBROUTINE SETUPT(LAST)                                          
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
@@ -1600,8 +1898,7 @@ C
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
       COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)               
       COMMON/GASN/NGASN(6)                                 
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/VEL/WX,WY,WZ
       COMMON/VELERR/DWX,DWY,DWZ
       COMMON/CTOWNS/ALPHA,ATT
@@ -1610,23 +1907,7998 @@ C
       COMMON/DIFERL/DFLER,DFTER
       COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
       COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
-      COMMON/THRM/ERFINT(25),CON,ITHRM
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG 
+      COMMON/GER/TWOPI
+      COMMON/MRATIO/VAN1,VAN2,VAN3,VAN4,VAN5,VAN6,VAN
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS                             
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+C                                                                       
+C   NEW UPDATE OF CONSTANTS 2008
+C
+      API=DACOS(-1.0D0)  
+      TWOPI=2.0D0*API                                               
+      ARY=13.60569193                                                  
+      PIR2=8.7973553523D-17                                             
+      ECHARG=1.602176487D-19                                            
+      EMASS=9.10938215D-31                                              
+      AMU=1.660538782D-27                                               
+      BOLTZ=8.617343D-5       
+      BOLTZJ=1.3806504D-23                                              
+      AWB=1.758820150D10                                                
+      ALOSCH=2.6867774D19                                               
+      EOVM=DSQRT(2.0D0*ECHARG/EMASS)*100.0D0                            
+      ABZERO=273.15D0                                                   
+      ATMOS=760.0D0                                                     
+      CONST1=AWB/2.0D0*1.0D-19                                          
+      CONST2=CONST1*1.0D-02                                             
+      CONST3=DSQRT(0.2D0*AWB)*1.0D-09                                   
+      CONST4=CONST3*ALOSCH*1.0D-15                                      
+      CONST5=CONST3/2.0D0
+C%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+C FIX ELASTIC ANGULAR DISTRIBUTIONS TO OKHRIMVOSKKY TYPE
+      NANISO=2
+C FIX ELASTIC ANGULAR DISTRIBUTIONS TO CAPITELLI LONGO TYPE
+C     NANISO=1
+C FIX ELASTIC ANGULAR DISTRIBUTIONS TO ISOTROPIC SCATTERING
+C     NANISO=0
+C%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+C  --------------------------------------------                
+C                                                                       
+C     IF(NGAS.EQ.1.AND.IPEN.EQ.1) THEN
+C     WRITE(6,992) 
+C 992 FORMAT(' PROGRAM STOPPED IT IS NOT POSSIBLE TO HAVE PENNING TRANSF
+C    /ERS IN PURE GASES.',/,' ONLY MIXTURES ALLOWED WITH IPEN=1')
+C     STOP
+C     ENDIF
+      TOTFRAC=0.0D0
+      IF(NGAS.EQ.0.OR.NGAS.GT.6) GO TO 999
+      DO 10 J=1,NGAS
+      IF(NGASN(J).EQ.0.OR.FRAC(J).EQ.0.0D0) GO TO 999
+   10 TOTFRAC=TOTFRAC+FRAC(J)
+      IF(DABS(TOTFRAC-100.0D0).GT.1.D-6) GO TO 999
+      LAST=0
+      TMAX=100.0D0                                                      
+      NSCALE=40000000
+      NMAX=NMAX*NSCALE 
+      IF(NMAX.LT.0) THEN
+       WRITE(6,91) 
+   91  FORMAT(2(/),' ERROR IN INPUT : NMAX TOO LARGE OVERFLOWED THE ALLO
+     /WED INTEGER RANGE OF THE COMPUTER OR COMPILER')     
+       LAST=1
+       RETURN
+      ENDIF                                                         
+      NSTEP=4000                                                        
+      THETA=0.785D0                                                     
+      PHI=0.1D0  
+C ZERO COMMON BLOCKS OF OUTPUT RESULTS
+      WX=0.0D0
+      WY=0.0D0
+      WZ=0.0D0
+      DWX=0.0D0
+      DWY=0.0D0
+      DWZ=0.0D0
+      TTOTS=0.0D0
+      ALPHA=0.0D0
+      ATT=0.0D0
+      ALPER=0.0D0
+      ATTER=0.0D0 
+      DIFLN=0.0D0
+      DIFTR=0.0D0
+      DFLER=0.0D0
+      DFTER=0.0D0
+      DIFXX=0.0D0
+      DIFYY=0.0D0
+      DIFZZ=0.0D0
+      DIFYZ=0.0D0
+      DIFXY=0.0D0
+      DIFXZ=0.0D0
+      DXXER=0.0D0
+      DYYER=0.0D0
+      DZZER=0.0D0
+      DYZER=0.0D0
+      DXYER=0.0D0
+      DXZER=0.0D0
+      DO 65 J=1,300                                                     
+   65 TIME(J)=0.0D0                                                     
+      DO 70 KGAS=1,6                              
+      DO 70 K=1,5                        
+   70 ICOLL(KGAS,K)=0
+      DO 80 KGAS=1,6  
+      DO 80 K=1,260
+   80 ICOLN(KGAS,K)=0                                                 
+      DO 100 K=1,4000                                                   
+  100 SPEC(K)=0.0D0                                                     
+      DO 101 K=1,6 
+      VTMB(K)=0.0D0          
+  101 AMGAS(K)=0.0D0                                
+C ---------------------------------------------  
+C CAN SET RANDOM NUMBER SEED TO SEED VALUE HERE
+C                                                               
+      RSTART=0.666D0
+C    RANDOM NUMBER SEED FUNCTION (RSTART)      
+C-----------------------------------------------      
+      ESTART=EFINAL/50.0D0
+      ITHRM=0                                            
+      CORR=ABZERO*TORR/(ATMOS*(ABZERO+TEMPC)*100.0D0)                   
+      AKT=(ABZERO+TEMPC)*BOLTZ
+      AN1=FRAC(1)*CORR*ALOSCH                                           
+      AN2=FRAC(2)*CORR*ALOSCH                                           
+      AN3=FRAC(3)*CORR*ALOSCH                                           
+      AN4=FRAC(4)*CORR*ALOSCH
+      AN5=FRAC(5)*CORR*ALOSCH
+      AN6=FRAC(6)*CORR*ALOSCH                                           
+      AN=100.0D0*CORR*ALOSCH                                            
+      VAN1=FRAC(1)*CORR*CONST4*1.0D15                                   
+      VAN2=FRAC(2)*CORR*CONST4*1.0D15                                   
+      VAN3=FRAC(3)*CORR*CONST4*1.0D15                                   
+      VAN4=FRAC(4)*CORR*CONST4*1.0D15
+      VAN5=FRAC(5)*CORR*CONST4*1.0D15
+      VAN6=FRAC(6)*CORR*CONST4*1.0D15                                   
+      VAN=100.0D0*CORR*CONST4*1.0D15
+C  RADIANS PER PICOSECOND                                                        
+      WB=AWB*BMAG*1.0D-12 
+C   METRES PER PICOSECOND
+      IF(BMAG.EQ.0.0D0) RETURN
+      EOVB=EFIELD*1.D-9/BMAG
+      RETURN
+  999 WRITE(6,87) NGAS,(J,NGASN(J),FRAC(J),J=1,6) 
+   87 FORMAT(3(/),4X,' ERROR IN GAS INPUT : NGAS=',I5,6(/,2X,' N=',I3,' 
+     /NGAS=',I5,' FRAC=',F8.3))                                         
+      RETURN                                                            
+      END                                                               
+      SUBROUTINE PRNTERT                                                
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)              
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG  
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),IPLAST(6),ISIZE(6),
+     /PENFRA(6,3,260),TCFMAX(6)            
+      COMMON/NAMES/NAMEG(6)                                             
+      CHARACTER*25 NAMEG                                  
+      WRITE(6,1)
+    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 9.03',/)          
+      WRITE(6,10) NGAS                                                  
+   10 FORMAT(10X,'MONTE CARLO SOLUTION FOR MIXTURE OF ',I2,' GASES.',/,
+     /5X,'------------------------------------------------------')  
+      WRITE(6,30) (NAMEG(J),FRAC(J), J=1,NGAS)                          
+  30  FORMAT(/,5X,'  GASES  USED ',16X,'PERCENTAGE USED ',2(/),6(6X,A25,
+     /5X,F9.4,/))                    
+      WRITE(6,50) TEMPC,TORR                                            
+   50 FORMAT(/,2X,'GAS TEMPERATURE =',F6.1,' DEGREES CENTIGRADE.',/,2X,'
+     /GAS PRESSURE = ',F7.1,' TORR.')                               
+      WRITE(6,51) EFINAL,NSTEP                                          
+  51  FORMAT(1(/),2X,'INTEGRATION FROM 0.0 TO ',F8.2,' EV.  IN ',I4,' ST
+     /EPS. ')
+      IF(IPEN.EQ.0) WRITE(6,52)
+      IF(IPEN.EQ.1) WRITE(6,53)
+   52 FORMAT(/,' PENNING EFFECTS NOT INCLUDED')
+   53 FORMAT(/,' PENNING EFFECTS INCLUDED')
+      IF(NANISO.EQ.0) WRITE(6,61)
+      IF(NANISO.EQ.1) WRITE(6,62)
+      IF(NANISO.EQ.2) WRITE(6,63)
+      IF(NANISO.LT.0.OR.NANISO.GT.2) THEN
+       WRITE(6,64)
+       STOP
+      ENDIF
+  61  FORMAT(/,' ISOTROPIC SCATTERING X-SECTIONS USED')
+  62  FORMAT(/,' ANISOTROPIC SCATTERING TYPE 1 (CAPITELLI/LONGO) USED IF
+     / AVAILABLE')
+  63  FORMAT(/,' ANISOTROPIC SCATTERING TYPE 2 (OKHRIMOVSKYY) USED IF AV
+     /AILABLE') 
+  64  FORMAT(/,' INPUT ERROR FOR ISOTROPY CONTROL,PROGRAM STOPPED')
+      WRITE(6,66)
+  66  FORMAT(2(/),' THERMAL MOTION OF GAS INCLUDED')                   
+  74  WRITE(6,90) EFIELD,BMAG,BTHETA,WB                                 
+  90  FORMAT(1(/),'  ELECTRIC FIELD =',F12.4,' VOLTS/CM.',/'  MAGNETIC F
+     /IELD =',F11.4,' KILOGAUSS.',/,'  ANGLE BETWEEN ELECTRIC AND MAGNET
+     /IC FIELD =',F10.3,' DEGREES.',/,'  CYCLOTRON FREQ. =',D12.3,' RADI
+     /ANS/PICOSECOND')
+      WRITE(6,95) ESTART 
+  95  FORMAT(1(/),'  INITIAL ELECTRON ENERGY =',F8.3,' EV.') 
+C     WRITE(6,96) RSTART
+C 96  FORMAT(/,'  RANDOM NUMBER STARTER (SEED)=',F7.4)     
+      WRITE(6,100) NMAX                                                 
+ 100  FORMAT(1(/),'  TOTAL NUMBER OF REAL COLLISIONS =',I11)    
+      WRITE(6,110)  (TCFMAX(L),L=1,6)                                  
+  110 FORMAT(1(/),'  NULL COLLISION FREQUENCY FOR EACH GAS COMPONENT IN 
+     /UNITS OF  (*10**12/SEC)',/,2(3(8X,D10.3)/))                    
+      RETURN                                                            
+      END
+      SUBROUTINE SORTT(KGAS,I,R2,IE)        
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+C         
+C    SELECTS COLLISION TYPE FROM COLLISION ARRAY BY BINARY STEP SAMPLING
+C      REDUCES SAMPLING RANGE TO WITHIN 4 POSITIONS IN ARRAY 
+C      OUTPUT =  I   ( POSITION WITHIN 4 OF CORRECT VALUE)  
+C  
+      ISTEP=ISIZE(KGAS)    
+      INCR=0
+      DO 1 K=1,12
+      I=INCR      
+      IF(ISTEP.EQ.2) RETURN
+      I=INCR+ISTEP
+      IF(I.GT.LAST(KGAS)) GO TO 2
+      IF(CF(KGAS,IE,I).LT.R2) THEN    
+       INCR=INCR+ISTEP         
+      ENDIF
+    2 ISTEP=ISTEP/2
+    1 CONTINUE 
+      RETURN
+      END                                                              
+      SUBROUTINE GERJAN
+      IMPLICIT REAL*8 (A-H,O-Z)
+      COMMON/GER/TWOPI
+      COMMON/RANM/RNMX(6)
+C     GENERATES 6 RANDOM NUMBERS ACCORDING TO MAXWELLIAN DISTRIBUTION 
+C     CF GERJAN HAGELLAR
+      DO 1 J=1,5,2
+      RAN1=drand48(RDUM)
+      RAN2=drand48(RDUM)
+      RNMX(J)=DSQRT(-DLOG(RAN1))*DCOS(RAN2*TWOPI)
+      RNMX(J+1)=DSQRT(-DLOG(RAN1))*DSIN(RAN2*TWOPI)
+    1 CONTINUE
+      RETURN
+      END
+      SUBROUTINE MONTET                                                 
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO
+      COMMON/VEL/WX,WY,WZ
+      COMMON/VELERR/DWX,DWY,DWZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/DIFVEL/DIFLN,DIFTR
+      COMMON/DIFERL/DFLER,DFTER
+      COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
+      COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM               
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/RANM/RNMX(6)
+      DIMENSION XST(2000000),YST(2000000),ZST(2000000),STO(2000000)
+      DIMENSION WZST(10),AVEST(10)
+      DIMENSION DFZZST(10),DFYYST(10),DFXXST(10)
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.  
+C   USED WITH MAGNETIC FIELD B =0.0   ELECTRIC FIELD IN Z DIRECTION.
+C   BACKGROUND GAS MOTION INCLUDED AT TEMP =  TEMPC 
+C -------------------------------------------------------------------
+      WX=0.0D0
+      WY=0.0D0   
+      DWX=0.0D0
+      DWY=0.0D0
+      DIFYZ=0.0D0
+      DIFXY=0.0D0
+      DIFXZ=0.0D0
+      DYZER=0.0D0
+      DXYER=0.0D0
+      DXZER=0.0D0
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0
+      ST=0.0D0 
+      ST1=0.0D0
+      ST2=0.0D0 
+      SUME2=0.0D0                                                       
+      SUMXX=0.0D0
+      SUMYY=0.0D0
+      SUMZZ=0.0D0 
+      SUMVX=0.0D0 
+      SUMVY=0.0D0
+      ZOLD=0.0D0
+      STOLD=0.0D0 
+      ST1OLD=0.0D0
+      ST2OLD=0.0D0
+      SZZOLD=0.0D0
+      SXXOLD=0.0D0
+      SYYOLD=0.0D0
+      SVXOLD=0.0D0
+      SVYOLD=0.0D0
+      SME2OLD=0.0D0                                                     
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      CONST9=CONST3*0.01D0 
+      CONST10=CONST9*CONST9
+      N4000=4000
+      N300=300                                              
+      ITMAX=10                                                          
+      ID=0                                                              
+      NCOL=0                                                            
+      NNULL=0
+      IEXTRA=0
+C GENERATE INITIAL RANDOM MAXWELL BOLTZMAN NUMBERS 
+      CALL GERJAN
+      IMBPT=0
+C  NUMBER OF COLLISIONS FOR DE-CORRELATION                  
+      NCOLM=2000000                                                     
+      TDASH=0.0D0                                                       
+C                                                                       
+C     INITIAL DIRECTION COSINES                                         
+C                                                                       
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI)                                        
+C                                                                       
+      BP=EFIELD*EFIELD*CONST1                                           
+      F1=EFIELD*CONST2                                                  
+      F2=EFIELD*CONST3                                                  
+      F4=2.0D0*DACOS(-1.0D0)                                            
+      J2M=NMAX/ITMAX 
+C MAIN LOOP                                                             
+      DO 210 J1=1,ITMAX                                                 
+      DO 133 J2=1,J2M
+    1 R1=drand48(RDUM) 
+      T=-DLOG(R1)/TCFMX+TDASH                         
+      TDASH=T                                                           
+      AP=DCZ1*F2*DSQRT(E1)                                              
+      E=E1+(AP+BP*T)*T  
+C CALCULATE DIRECTION COSINES BEFORE COLLISION                     
+      CONST6=DSQRT(E1/E)
+      DCX2=DCX1*CONST6
+      DCY2=DCY1*CONST6
+      DCZ2=DCZ1*CONST6+EFIELD*T*CONST5/DSQRT(E)
+C FIND IDENTITY OF GAS FOR COLLISION 
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1  
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C   CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)               
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)              
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)  
+C  CALCULATE ELECTRON VELOCITY VECTORS VEX,VEY,VEZ
+      VEX=DCX2*CONST9*DSQRT(E)
+      VEY=DCY2*CONST9*DSQRT(E)
+      VEZ=DCZ2*CONST9*DSQRT(E)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET, EOK
+      EOK=((VEX-VGX)**2+(VEY-VGY)**2+(VEZ-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                        
+      IE=DMIN0(IE,N4000)
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                               
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)
+      IF(R4.GT.TLIM) THEN                                             
+       NNULL=NNULL+1                                                    
+       GO TO 1    
+      ENDIF  
+      NCOL=NCOL+1
+C CALCULATE DIRECTION COSINES OF ELECTRON IN O KELVIN FRAME 
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(VEX-VGX)*CONST11
+      DYCOM=(VEY-VGY)*CONST11
+      DZCOM=(VEZ-VGZ)*CONST11                                  
+C                                                                       
+C  CALCULATE  POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T                                                            
+      IF(T.GE.TMAX1) TMAX1=T                                            
+      TDASH=0.0D0                                                       
+      A=AP*T                                                            
+      B=BP*T2                                                           
+      SUME2=SUME2+T*(E1+A/2.0D0+B/3.0D0)                                
+      CONST7=CONST9*DSQRT(E1)                                           
+      A=T*CONST7                                                        
+      CX1=DCX1*CONST7
+      CY1=DCY1*CONST7                                                   
+      X=X+DCX1*A                                                        
+      Y=Y+DCY1*A                                                        
+      Z=Z+DCZ1*A+T2*F1                                                  
+      ST=ST+T                                                           
+      IT=DINT(T+1.0D0)                                                 
+      IT=DMIN0(IT,N300)                                               
+      TIME(IT)=TIME(IT)+1.0D0 
+C ENERGY SPECTRUM FOR O KELVIN FRAME
+      SPEC(IE)=SPEC(IE)+1.0D0                                           
+      WZ=Z/ST
+      SUMVX=SUMVX+CX1*CX1*T2
+      SUMVY=SUMVY+CY1*CY1*T2
+      IF(ID.EQ.0) GO TO 121
+      KDUM=0
+      DO 120 JDUM=1,4 
+      ST2=ST2+T
+      NCOLDM=NCOL+KDUM
+      IF(NCOLDM.GT.NCOLM) NCOLDM=NCOLDM-NCOLM 
+      SDIF=ST-STO(NCOLDM)
+      SUMXX=SUMXX+((X-XST(NCOLDM))**2)*T/SDIF
+      SUMYY=SUMYY+((Y-YST(NCOLDM))**2)*T/SDIF  
+      IF(J1.LT.3) GO TO 120
+      ST1=ST1+T 
+      SUMZZ=SUMZZ+((Z-ZST(NCOLDM)-WZ*SDIF)**2)*T/SDIF 
+  120 KDUM=KDUM+250000                       
+  121 XST(NCOL)=X
+      YST(NCOL)=Y
+      ZST(NCOL)=Z
+      STO(NCOL)=ST  
+      IF(NCOL.GE.NCOLM) THEN                                            
+       ID=ID+1                                                          
+       XID=DFLOAT(ID)                                                   
+       NCOL=0  
+      ENDIF                                                           
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R3=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY      
+      CALL SORTT(KGAS,I,R3,IE)
+  140 I=I+1 
+      IF(CF(KGAS,IE,I).LT.R3) GO TO 140         
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)                                                    
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                    
+C  USE FLAT DISTRIBUTION OF  ELECTRON ENERGY BETWEEN E-EION AND 0.0 EV  
+C  SAME AS IN BOLTZMANN                                                 
+      R9=drand48(RDUM)
+      EXTRA=R9*(EOK-EI)                                              
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                                                                       
+  666 IPT=IARRY(KGAS,I)                                                 
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1 
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF
+C IF EXCITATION THEN ADD PROBABILITY ,PENFRA(1,I), OF TRANSFER TO 
+C IONISATION OF THE OTHER GASES IN MIXTURE
+      IF(IPEN.EQ.0) GO TO 5 
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+C ADD EXTRA IONISATION COLLISION
+       IEXTRA=IEXTRA+1
+      ENDIF
+    5 S2=(S1*S1)/(S1-1.0D0)  
+C  ANISOTROPIC SCATTERING
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I) 
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC  SCATTERING                                        
+       F3=1.0D0-2.0D0*R3 
+      ENDIF  
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                            
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                         
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                       
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA) 
+      DZCOM=DMIN1(DZCOM,1.0D0)                                       
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM) 
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)            
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)
+  130 CONTINUE 
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      CONST12=CONST9*DSQRT(E1)
+      VXLAB=DCX1*CONST12+VGX
+      VYLAB=DCY1*CONST12+VGY
+      VZLAB=DCZ1*CONST12+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME   
+      E1=(VXLAB*VXLAB+VYLAB*VYLAB+VZLAB*VZLAB)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=VXLAB*CONST11
+      DCY1=VYLAB*CONST11
+      DCZ1=VZLAB*CONST11  
+  133 CONTINUE
+C   ------------------------------------------  
+      IF(J1.EQ.1) WRITE(6,201)                                         
+  201 FORMAT(/,'    VEL      POS        TIME      ENERGY   COUNT   DIFXX
+     /     DIFYY     DIFZZ',/)                  
+      WZ=WZ*1.0D+09
+      AVE=SUME2/ST
+      DIFLN=0.0D0
+      IF(NISO.EQ.0) THEN
+       DIFXX=5.0D+15*SUMVX/ST
+       DIFYY=5.0D+15*SUMVY/ST 
+       DFXXST(J1)=5.0D+15*(SUMVX-SVXOLD)/(ST-STOLD)
+       DFYYST(J1)=5.0D+15*(SUMVY-SVYOLD)/(ST-STOLD)
+      ELSE
+       IF(ST2.NE.0.0D0) THEN
+        DIFYY=5.0D+15*SUMYY/ST2
+        DIFXX=5.0D+15*SUMXX/ST2
+        DFXXST(J1)=5.0D+15*(SUMXX-SXXOLD)/(ST2-ST2OLD)
+        DFYYST(J1)=5.0D+15*(SUMYY-SYYOLD)/(ST2-ST2OLD) 
+       ELSE
+        DFXXST(J1)=0.0D0
+        DFYYST(J1)=0.0D0
+       ENDIF
+      ENDIF   
+      IF(ST1.NE.0.0D0) THEN
+       DIFZZ=5.0D+15*SUMZZ/ST1
+       DFZZST(J1)=5.0D+15*(SUMZZ-SZZOLD)/(ST1-ST1OLD)
+      ELSE
+       DFZZST(J1)=0.0D0
+      ENDIF 
+      WZST(J1)=(Z-ZOLD)/(ST-STOLD)*1.0D+09
+      AVEST(J1)=(SUME2-SME2OLD)/(ST-STOLD)
+      ZOLD=Z  
+      STOLD=ST  
+      ST1OLD=ST1
+      ST2OLD=ST2
+      SVXOLD=SUMVX
+      SVYOLD=SUMVY
+      SZZOLD=SUMZZ
+      SXXOLD=SUMXX
+      SYYOLD=SUMYY
+      SME2OLD=SUME2 
+      WRITE(6,202) WZ,Z,ST,AVE,ID,DIFXX,DIFYY,DIFZZ                     
+  202 FORMAT(1X,F8.2,2(1X,D10.3),F9.4,1X,I5,1X,3(2X,F8.1)) 
+C IF LAST ENERGY BIN IS HIGH INCREASE INTEGRATION ENERGY RANGE
+      IF(SPEC(4000).GT.(350.0D0*DFLOAT(J1))) THEN
+       WRITE(6,50)
+   50  FORMAT(' WARNING ENERGY OUT OF RANGE,INCREASE ELECTRON ENERGY INT
+     /EGRATION RANGE ')
+       STOP      
+      ENDIF
+C LOOP                                                                 
+  210 CONTINUE
+C CALCULATE ERRORS AND CHECK AVERAGES
+      TWZST=0.0D0  
+      TAVE=0.0D0   
+      T2WZST=0.0D0             
+      T2AVE=0.0D0      
+      TZZST=0.0D0    
+      TYYST=0.0D0    
+      TXXST=0.0D0   
+      T2ZZST=0.0D0
+      T2YYST=0.0D0
+      T2XXST=0.0D0
+      DO 790 K=1,10
+      TWZST=TWZST+WZST(K)
+      TAVE=TAVE+AVEST(K)
+      T2WZST=T2WZST+WZST(K)*WZST(K)
+      T2AVE=T2AVE+AVEST(K)*AVEST(K)
+      TXXST=TXXST+DFXXST(K)
+      TYYST=TYYST+DFYYST(K)  
+      T2YYST=T2YYST+DFYYST(K)*DFYYST(K)
+      T2XXST=T2XXST+DFXXST(K)*DFXXST(K)
+      IF(K.LT.3) GO TO 790
+      TZZST=TZZST+DFZZST(K)
+      T2ZZST=T2ZZST+DFZZST(K)*DFZZST(K)         
+  790 CONTINUE 
+      DWZ=100.0D0*DSQRT((T2WZST-TWZST*TWZST/10.0D0)/9.0D0)/WZ
+      DEN=100.0D0*DSQRT((T2AVE-TAVE*TAVE/10.0D0)/9.0D0)/AVE
+      DXXER=100.0D0*DSQRT((T2XXST-TXXST*TXXST/10.0D0)/9.0D0)/DIFXX
+      DYYER=100.0D0*DSQRT((T2YYST-TYYST*TYYST/10.0D0)/9.0D0)/DIFYY 
+      DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZ
+      DWZ=DWZ/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DXXER=DXXER/DSQRT(10.0D0)
+      DYYER=DYYER/DSQRT(10.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
+      DIFLN=DIFZZ
+      DIFTR=(DIFXX+DIFYY)/2.0D0
+C  CONVERT CM/SEC
+      WZ=WZ*1.0D05
+      DFLER=DZZER
+      DFTER=(DXXER+DYYER)/2.0D0
+C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
+      ANCATT=0.0D0
+      ANCION=0.0D0
+      DO 800 I=1,NGAS
+      ANCATT=ANCATT+ICOLL(I,3)   
+  800 ANCION=ANCION+ICOLL(I,2) 
+      ANCION=ANCION+IEXTRA  
+      ATTER=0.0D0
+      IF(ANCATT.EQ.0.0D0) GO TO 810
+      ATTER=100.0D0*DSQRT(ANCATT)/ANCATT 
+  810 ATT=ANCATT/(ST*WZ)*1.0D12
+      ALPER=0.0D0 
+      IF(ANCION.EQ.0.0D0) GO TO 820
+      ALPER=100.0D0*DSQRT(ANCION)/ANCION
+  820 ALPHA=ANCION/(ST*WZ)*1.0D12  
+      RETURN                                                            
+      END                                                               
+      SUBROUTINE OUTPUTT                                                
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000),
+     /QEL(4000)                                                         
+      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(250,4000),    
+     /QIN2(250,4000),QIN3(250,4000),QIN4(250,4000),QIN5(250,4000),
+     /QIN6(250,4000),QSATT(4000)             
+      COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)                 
+      COMMON/DIFVEL/DIFLN,DIFTR
+      COMMON/DIFERL/DFLER,DFTER
+      COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
+      COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
+      COMMON/VEL/WX,WY,WZ
+      COMMON/VELERR/DWX,DWY,DWZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG    
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)                         
+      COMMON/SINT/SIMF(4000)                                            
+      COMMON/NAMES/NAMEG(6)
+      COMMON/SCRIPT/DSCRPT(6,260)
+      CHARACTER*50 DSCRPT                                               
+      CHARACTER*25 NAMEG
+      WRITE(6,15)                                                       
+      WRITE(6,15)                                                       
+   15 FORMAT('----------------------------------------------------------
+     /-------------------')
+      NREAL=NMAX                                                  
+      WRITE(6,109) TMAX1,NNULL,NREAL                                    
+  109 FORMAT(/,2X,'CALCULATED MAX. COLLISION TIME =',F7.2,' PICOSECONDS.
+     /',2(/),2X,'NUMBER OF NULL COLLISIONS =',I11,/,2X,'NUMBER OF REAL C
+     /OLLISIONS =',I11)
+      WMNZ=WZ*1.0D-05 
+      WMNY=WY*1.0D-05
+      WMNX=WX*1.0D-05                                      
+      WRITE(6,940) WMNZ,DWZ,WMNY,DWY,WMNX,DWX                           
+  940 FORMAT(/,2X,'Z DRIFT VELOCITY =',E11.4,' MICRONS/NANOSECOND  +-',F
+     /8.2,'% ',/,2X,'Y DRIFT VELOCITY =',E11.4,' MICRONS/NANOSECOND  +-'
+     /,F8.2,'%',/,2X,'X DRIFT VELOCITY =',E11.4,' MICRONS/NANOSECOND  +-
+     /',F8.2,'%',/) 
+      IF(BMAG.GT.0.0D0.AND.(BTHETA.GT.0.0D0.AND.BTHETA.LT.180.0D0))
+     /GO TO 800 
+      DTOVMB=DIFTR*EFIELD/WZ                                            
+      DTMN=DSQRT(2.0D0*DIFTR/WZ)*10000.0D0 
+      DFTER1=DSQRT(DFTER**2+DWZ**2)
+      DFTER2=DFTER1/2.0
+      WRITE(6,954)                                  
+      WRITE(6,950) DIFTR,DFTER,DTOVMB,DFTER1,DTMN,DFTER2                
+  950 FORMAT(/,2X,'TRANSVERSE DIFFUSION   =',D11.4,' +-',F8.2,'%',/,10X,
+     /'=',F9.4,' EV. +-',F8.2,'%',/,10X,'=',F9.3,' MICRONS/CENTIMETER**0
+     /.5  +-',F8.2,'%',/)                     
+      DLOVMB=DIFLN*EFIELD/WZ                                            
+      DLMN=DSQRT(2.0D0*DIFLN/WZ)*10000.0D0 
+      DFLER1=DSQRT(DFLER**2+DWZ**2)     
+      DFLER2=DFLER1/2.0                               
+      WRITE(6,992) DIFLN,DFLER,DLOVMB,DFLER1,DLMN,DFLER2                
+  992 FORMAT(/,2X,'LONGITUDINAL DIFFUSION =',D11.4,' +-',F8.1,'%',/,10X,
+     /'=',F9.4,' EV. +-',F8.2,'%',/,10X,'=',F9.3,' MICRONS/CENTIMETER**0
+     /.5  +-',F8.2,'%',/)                     
+      GO TO 900
+  800 WRITE(6,954) 
+  954 FORMAT(/,10X,' DIFFUSION IN CM**2/SEC.',/)     
+      WRITE(6,955) DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
+  955 FORMAT(/,2X,'DIFFUSION TENSOR :',/,6X,' DIFXX =',D11.4,' DIFYY =',
+     /D11.4,' DIFZZ =',D11.4,/,6X,' DIFYZ =',D11.4,' DIFXY =',D11.4,' DI
+     /FXZ =',D11.4,/)
+      WRITE(6,956) DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
+  956 FORMAT(/,2X,'ERROR ON DIFFUSION TENSOR :',/,6X,' DIFXX =',F8.2,'% 
+     / DIFYY =',F8.2,'%  DIFZZ =',F8.2,'%',/,6X,' DIFYZ =',F8.2,'%  DIFX
+     /Y =',F8.2,'%  DIFXZ =',F8.2,'%',/)
+      IF(BTHETA.EQ.90.) WRITE(6,957) DIFLN,DFLER,DIFTR,DFTER,DIFXX,DXXER
+  957 FORMAT(/,8X,' LONGITUDINAL DIFFUSION =',D11.4,' +-',F8.2,'%',/,10X
+     /,' TRANSVERSE DIFFUSION =',D11.4,' +-',F8.2,'%',/,2X,'TRANSVERSE D
+     /IFFUSION (PARALLEL TO B-FIELD) DIFXX=',D11.4,' +-',F8.2,'%',/)
+  900 WRITE(6,333) ALPHA,ALPER,ATT,ATTER                             
+  333 FORMAT(2(/),'  IONISATION RATE /CM.=',E11.4,' +/-',F6.2,' PERCENT.
+     /',/,'  ATTACHMENT RATE /CM.=',E11.4,' +/-',F6.2,' PERCENT.',2(/)) 
+      WRITE(6,960) AVE,DEN             
+  960 FORMAT(/,2X,'MEAN ELECTRON ENERGY =',F9.4,' EV. ERROR =  +-',F8.2,
+     /'%',/)              
+      RETURN                                                            
+      END
+      SUBROUTINE MONTEAT                                                
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+      COMMON/DIFVEL/DIFLN,DIFTR
+      COMMON/DIFERL/DFLER,DFTER
+      COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
+      COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
+      COMMON/VEL/WX,WY,WZ                    
+      COMMON/VELERR/DWX,DWY,DWZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)     
+      COMMON/RANM/RNMX(6)                       
+      DIMENSION XST(1000000),YST(1000000),ZST(1000000),STO(1000000) 
+      DIMENSION WZST(10),AVEST(10)                          
+      DIMENSION DFZZST(10),DFYYST(10),DFXXST(10)
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.  
+C   USED WITH MAGNETIC FIELD , B , PARALLEL TO ELECTRIC FIELD IN THE
+C   Z DIRECTION.
+C   BACKGROUND GAS MOTION INCLUDED AT TEMP = AKT
+C -------------------------------------------------------------------
+      WX=0.0D0
+      WY=0.0D0
+      DWX=0.0D0
+      DWY=0.0D0
+      DIFYZ=0.0D0
+      DIFXY=0.0D0
+      DIFXZ=0.0D0
+      DYZER=0.0D0
+      DXYER=0.0D0
+      DXZER=0.0D0
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0
+      ST=0.0D0 
+      ST1=0.0D0
+      ST2=0.0D0
+      SUME2=0.0D0
+      SUMXX=0.0D0
+      SUMYY=0.0D0
+      SUMZZ=0.0D0
+      SUMVX=0.0D0
+      SUMVY=0.0D0
+      ZOLD=0.0D0
+      STOLD=0.0D0
+      ST1OLD=0.0D0
+      ST2OLD=0.0D0
+      SZZOLD=0.0D0
+      SXXOLD=0.0D0
+      SYYOLD=0.0D0
+      SVXOLD=0.0D0
+      SVYOLD=0.0D0
+      SME2OLD=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      CONST9=CONST3*0.01D0 
+      CONST10=CONST9*CONST9
+      N4000=4000
+      N300=300                                             
+      ITMAX=10                                                          
+      ID=0                                                              
+      NCOL=0                                                            
+      NNULL=0
+      IEXTRA=0
+C GENERATE INITIAL RANDOM NUMBERS FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C  NUMBER OF COLLISIONS FOR DE-CORRELATION                          
+      NCOLM=1000000                                                     
+      TDASH=0.0D0                                                       
+C                                                                       
+C     INITIAL DIRECTION COSINES                                         
+C                                                                       
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI) 
+C INITIAL VELOCITY
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT
+      CY1=DCY1*VTOT
+      CZ1=DCZ1*VTOT                                             
+      BP=EFIELD*EFIELD*CONST1                                           
+      F1=EFIELD*CONST2                                                  
+      F2=EFIELD*CONST3
+      F4=2.0D0*DACOS(-1.0D0)                                           
+      J2M=NMAX/ITMAX                                                    
+C MAIN LOOP                                                             
+      DO 210 J1=1,ITMAX                                                 
+      DO 133 J2=1,J2M                                                   
+    1 R1=drand48(RDUM)  
+      T=-DLOG(R1)/TCFMX+TDASH                                          
+      TDASH=T  
+      AP=DCZ1*F2*DSQRT(E1)                                              
+      E=E1+(AP+BP*T)*T 
+      WBT=WB*T
+      COSWT=DCOS(WBT) 
+      SINWT=DSIN(WBT)
+      CONST6=DSQRT(E1/E)
+C  FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE ELECTRON VELOCITY VECTORS BEFORE COLLISION
+    4 CX2=CX1*COSWT-CY1*SINWT
+      CY2=CY1*COSWT+CX1*SINWT
+      VTOT=CONST9*DSQRT(E) 
+      CZ2=VTOT*(DCZ1*CONST6+EFIELD*T*CONST5/DSQRT(E))  
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+      IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF   
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10              
+      IE=DINT(EOK/ESTEP)+1                                            
+      IE=DMIN0(IE,N4000)                                              
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                                
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)                            
+      IF(R4.GT.TLIM) THEN                                               
+       NNULL=NNULL+1                                                    
+       GO TO 1    
+      ENDIF   
+      NCOL=NCOL+1                                                      
+C  CALCULATE DIRECTION COSINES OF ELECTRON IN O KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11
+C  CALCULATE POSITIONS AT INSTANT BEFORE COLLISION IN LAB FRAME
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T                                                            
+      IF(T.GE.TMAX1) TMAX1=T                                            
+      TDASH=0.0D0
+      A=AP*T                                                            
+      B=BP*T2                                                           
+      SUME2=SUME2+T*(E1+A/2.0D0+B/3.0D0)                                
+      CONST7=CONST9*DSQRT(E1)                                           
+      A=T*CONST7                                                        
+      DX=(CX1*SINWT-CY1*(1.0D0-COSWT))/WB
+      X=X+DX                             
+      DY=(CY1*SINWT+CX1*(1.0D0-COSWT))/WB                               
+      Y=Y+DY 
+C     IF(DCZ1.GT.1.0D0) WRITE(6,9999) DCZ1
+C9999 FORMAT(' DCZ1=',D12.3)                                          
+      Z=Z+DCZ1*A+T2*F1                                                  
+      ST=ST+T                                                           
+      IT=DINT(T+1.0D0)                                              
+      IT=DMIN0(IT,N300)                                                
+      TIME(IT)=TIME(IT)+1.0D0
+C ENERGY SPECTRUM IN O KELVIN FRAME
+      SPEC(IE)=SPEC(IE)+1.0D0                                           
+      WZ=Z/ST 
+      SUMVX=SUMVX+DX*DX
+      SUMVY=SUMVY+DY*DY  
+      IF(ID.EQ.0) GO TO 121                                             
+      KDUM=0
+      DO 120 JDUM=1,4 
+      ST2=ST2+T
+      NCOLDM=NCOL+KDUM
+      IF(NCOLDM.GT.NCOLM) NCOLDM=NCOLDM-NCOLM
+      SDIF=ST-STO(NCOLDM)
+      SUMXX=SUMXX+((X-XST(NCOLDM))**2)*T/SDIF
+      SUMYY=SUMYY+((Y-YST(NCOLDM))**2)*T/SDIF
+      IF(J1.LT.3) GO TO 120                                             
+      ST1=ST1+T                                                       
+      SUMZZ=SUMZZ+((Z-ZST(NCOLDM)-WZ*SDIF)**2)*T/SDIF
+  120 KDUM=KDUM+125000                      
+  121 XST(NCOL)=X
+      YST(NCOL)=Y
+      ZST(NCOL)=Z
+      STO(NCOL)=ST  
+      IF(NCOL.GE.NCOLM) THEN                                            
+       ID=ID+1                                                          
+       XID=DFLOAT(ID)                                                   
+       NCOL=0
+      ENDIF                                                             
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM) 
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY                       
+      CALL SORTT(KGAS,I,R2,IE)                                         
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)                                                    
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                    
+C  USE FLAT DISTRIBUTION OF  ELECTRON ENERGY BETWEEN E-EION AND 0.0 EV  
+C  SAME AS IN BOLTZMANN                                                 
+      R9=drand48(RDUM)
+      EXTRA=R9*(EOK-EI)                                              
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                                                                       
+  666 IPT=IARRY(KGAS,I)                                                 
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1 
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF
+C IF EXCITATION THEN ADD PROBABLITY,PENFRAC(1,I),OF TRANSFER TO GIVE
+C IONISATION OF THE OTHER GASES IN THE MIXTURE.
+      IF(IPEN.EQ.0) GO TO 5
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+C ADD EXTRA IONISATION COLLISION
+       IEXTRA=IEXTRA+1
+      ENDIF
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C ANISOTROPIC SCATTERING 
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING 
+       F3=1.0D0-2.0D0*R3
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM) 
+      PHI0=F4*R4
+      F8=DSIN(PHI0)                                                    
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                            
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                            
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM) 
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)               
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)  
+  130 CONTINUE            
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11 
+  133 CONTINUE                                                          
+C   ------------------------------------------  
+      IF(J1.EQ.1) WRITE(6,201)                                         
+  201 FORMAT(/,'    VEL      POS        TIME      ENERGY   COUNT   DIFXX
+     /     DIFYY     DIFZZ  ',/)
+      WZ=WZ*1.0D+09
+      AVE=SUME2/ST
+      IF(NISO.EQ.0) THEN
+       DIFXX=5.0D+15*SUMVX/ST
+       DIFYY=5.0D+15*SUMVY/ST
+       DFXXST(J1)=5.0D+15*(SUMVX-SVXOLD)/(ST-STOLD)
+       DFYYST(J1)=5.0D+15*(SUMVY-SVYOLD)/(ST-STOLD)
+      ELSE 
+       IF(ST2.NE.0.0D0) THEN
+        DIFYY=5.0D+15*SUMYY/ST2
+        DIFXX=5.0D+15*SUMXX/ST2  
+        DFXXST(J1)=5.0D+15*(SUMXX-SXXOLD)/(ST2-ST2OLD)
+        DFYYST(J1)=5.0D+15*(SUMYY-SYYOLD)/(ST2-ST2OLD)
+       ELSE
+        DFXXST(J1)=0.0D0
+        DFYYST(J1)=0.0D0 
+       ENDIF                                                  
+      ENDIF 
+      IF(ST1.NE.0.0D0) THEN
+       DIFZZ=5.0D+15*SUMZZ/ST1
+       DFZZST(J1)=5.0D+15*(SUMZZ-SZZOLD)/(ST1-ST1OLD)
+      ELSE
+       DFZZST(J1)=0.0D0
+      ENDIF
+      WZST(J1)=(Z-ZOLD)/(ST-STOLD)*1.0D+09
+      AVEST(J1)=(SUME2-SME2OLD)/(ST-STOLD)
+      ZOLD=Z
+      STOLD=ST
+      ST1OLD=ST1
+      ST2OLD=ST2
+      SVXOLD=SUMVX
+      SVYOLD=SUMVY
+      SZZOLD=SUMZZ
+      SXXOLD=SUMXX
+      SYYOLD=SUMYY
+      SME2OLD=SUME2                                              
+      WRITE(6,202) WZ,Z,ST,AVE,ID,DIFXX,DIFYY,DIFZZ                
+  202 FORMAT(1X,F8.2,2(1X,D10.3),F9.4,1X,I5,1X,3(2X,F8.1))              
+C LOOP                                                                      
+  210 CONTINUE  
+C CALCULATE ERRORS AND CHECK AVERAGES   
+      TWZST=0.0D0 
+      TAVE=0.0D0   
+      T2WZST=0.0D0    
+      T2AVE=0.0D0     
+      TZZST=0.0D0     
+      TYYST=0.0D0     
+      TXXST=0.0D0    
+      T2ZZST=0.0D0
+      T2YYST=0.0D0
+      T2XXST=0.0D0
+      DO 790 K=1,10
+      TWZST=TWZST+WZST(K)
+      TAVE=TAVE+AVEST(K)
+      T2WZST=T2WZST+WZST(K)*WZST(K)
+      T2AVE=T2AVE+AVEST(K)*AVEST(K)
+      TXXST=TXXST+DFXXST(K)  
+      TYYST=TYYST+DFYYST(K)  
+      T2XXST=T2XXST+DFXXST(K)*DFXXST(K)
+      T2YYST=T2YYST+DFYYST(K)*DFYYST(K)
+      IF(K.LT.3) GO TO 790
+      TZZST=TZZST+DFZZST(K)
+      T2ZZST=T2ZZST+DFZZST(K)*DFZZST(K)    
+  790 CONTINUE 
+      DWZ=100.0D0*DSQRT((T2WZST-TWZST*TWZST/10.0D0)/9.0D0)/WZ
+      DEN=100.0D0*DSQRT((T2AVE-TAVE*TAVE/10.0D0)/9.0D0)/AVE
+      DXXER=100.0D0*DSQRT((T2XXST-TXXST*TXXST/10.0D0)/9.0D0)/DIFXX
+      DYYER=100.0D0*DSQRT((T2YYST-TYYST*TYYST/10.0D0)/9.0D0)/DIFYY
+      DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZ 
+      DWZ=DWZ/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DXXER=DXXER/DSQRT(10.0D0)
+      DYYER=DYYER/DSQRT(10.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
+      DIFLN=DIFZZ
+      DIFTR=(DIFXX+DIFYY)/2.0D0   
+C CONVERT TO CM/SEC
+      WZ=WZ*1.0D05
+      DFLER=DZZER 
+      DFTER=(DXXER+DYYER)/2.0D0 
+C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
+      ANCATT=0.0D0
+      ANCION=0.0D0
+      DO 800 I=1,NGAS
+      ANCATT=ANCATT+ICOLL(I,3)
+  800 ANCION=ANCION+ICOLL(I,2)
+      ANCION=ANCION+IEXTRA
+      ATTER=0.0
+      IF(ANCATT.EQ.0.0D0) GO TO 810
+      ATTER=100.0*DSQRT(ANCATT)/ANCATT
+  810 ATT=ANCATT/(ST*WZ)*1.0D12
+      ALPER=0.0
+      IF(ANCION.EQ.0.0D0) GO TO 820
+      ALPER=100.0*DSQRT(ANCION)/ANCION
+  820 ALPHA=ANCION/(ST*WZ)*1.0D12                                       
+      RETURN                                                            
+      END                                                               
+      SUBROUTINE MONTEBT                                                
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO
+      COMMON/MIX2/ES(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000)
+     /,QEL(4000)                                                        
+      COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
+      COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER 
+      COMMON/DIFVEL/DIFLN,DIFTR
+      COMMON/DIFERL/DFLER,DFTER
+      COMMON/VEL/WX,WY,WZ
+      COMMON/VELERR/DWX,DWY,DWZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/RANM/RNMX(6)                             
+      DIMENSION XST(1000000),YST(1000000),ZST(1000000),STO(1000000)
+      DIMENSION WZST(10),WYST(10),AVEST(10)
+      DIMENSION DFZZST(10),DFYYST(10),DFXXST(10)
+      DIMENSION DFYZST(10),DFLNST(10),DFTRST(10)                        
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY. 
+C   SUBROUTINE HANDLES MAGNETIC FIELD AND ELECTRIC FIELD
+C   BFIELD ALONG X-AXIS EFIELD ALONG Z-AXIS (90 DEGREES). 
+C   BACKGROUND GAS MOTION INCLUDED AT TEMP = TEMPC  
+C ------------------------------------------------------------------- 
+      WX=0.0D0
+      DWX=0.0D0
+      DIFXZ=0.0D0
+      DIFXY=0.0D0
+      DXZER=0.0D0
+      DXYER=0.0D0
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0 
+      ST=0.0D0
+      ST1=0.0D0
+      ST2=0.0D0                                                         
+      SUMXX=0.0D0 
+      SUMYY=0.0D0                                                       
+      SUMZZ=0.0D0
+      SUMYZ=0.0D0
+      SUMLS=0.0D0                                                       
+      SUMTS=0.0D0
+      SUMVX=0.0D0
+      ZOLD=0.0D0
+      YOLD=0.0D0
+      STOLD=0.0D0
+      ST1OLD=0.0D0
+      ST2OLD=0.0D0
+      SZZOLD=0.0D0
+      SXXOLD=0.0D0
+      SYYOLD=0.0D0
+      SYZOLD=0.0D0
+      SVXOLD=0.0D0
+      SLNOLD=0.0D0
+      STROLD=0.0D0
+      EBAROLD=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0  
+      EF100=EFIELD*100.0D0
+      RDUM=RSTART                                                       
+      E1=ESTART    
+      N4000=4000
+      N300=300                                                     
+      ITMAX=10 
+      ID=0                                                              
+      NCOL=0                                                            
+      NNULL=0  
+      IEXTRA=0
+C GENERATE INITIAL RANDOM NUMBER FOR MAXWELL BOLTZMAN
+      CALL GERJAN
+      IMBTP=0
+C  NUMBER OF COLLISIONS FOR DE-CORRELATION                            
+      NCOLM=1000000                                                     
+      TDASH=0.0D0 
+      F4=2.0D0*DACOS(-1.0D0)
+      CONST9=CONST3*0.01D0     
+      CONST10=CONST9*CONST9                                         
+C     INITIAL DIRECTION COSINES                                         
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI)                                        
+C     INITIAL VELOCITY
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT                               
+      CY1=DCY1*VTOT             
+      CZ1=DCZ1*VTOT                                           
+      J2M=NMAX/ITMAX                                                    
+C MAIN LOOP 
+      DO 210 J1=1,ITMAX                                                 
+      DO 133 J2=1,J2M
+    1 R1=drand48(RDUM) 
+      T=-DLOG(R1)/TCFMX+TDASH
+      TDASH=T
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      DZ=(CZ1*SINWT+(EOVB-CY1)*(1.0D0-COSWT))/WB
+      E=E1+DZ*EF100 
+C CALCULATE ELECTRON VELOCITY IN LAB FRAME
+      CX2=CX1
+      CY2=(CY1-EOVB)*COSWT+CZ1*SINWT+EOVB
+      CZ2=CZ1*COSWT-(CY1-EOVB)*SINWT  
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3 
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET,EOK
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                             
+      IE=DMIN0(IE,N4000)   
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                                
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)
+      IF(R4.GT.TLIM) THEN                                               
+       NNULL=NNULL+1                                                    
+       GO TO 1   
+      ENDIF 
+      NCOL=NCOL+1
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11                                           
+C                                                                       
+C  CALCULATE POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T  
+      TDASH=0.0D0                                          
+C CALC NEW POSITION
+      X=X+CX1*T
+      Y=Y+EOVB*T+((CY1-EOVB)*SINWT+CZ1*(1.0D0-COSWT))/WB
+      Z=Z+DZ                                   
+      ST=ST+T                                                           
+      IT=DINT(T+1.0D0)           
+      IT=DMIN0(IT,N300)                                               
+      TIME(IT)=TIME(IT)+1.0D0
+C ENERGY SPECTRUM FOR O KELVIN FRAME  
+      SPEC(IE)=SPEC(IE)+1.0D0                                           
+      WZ=Z/ST
+      WY=Y/ST
+      SUMVX=SUMVX+CX1*CX1*T2                                  
+      IF(ID.EQ.0) GO TO 121
+      KDUM=0
+      DO 120 J=1,4 
+      ST2=ST2+T
+      NCOLDM=NCOL+KDUM
+      IF(NCOLDM.GT.NCOLM) NCOLDM=NCOLDM-NCOLM
+      SDIF=ST-STO(NCOLDM)
+      SUMXX=SUMXX+((X-XST(NCOLDM))**2)*T/SDIF 
+      IF(J1.LT.3) GO TO 120  
+      ST1=ST1+T     
+      SUMZZ=SUMZZ+((Z-ZST(NCOLDM)-WZ*SDIF)**2)*T/SDIF
+      SUMYY=SUMYY+((Y-YST(NCOLDM)-WY*SDIF)**2)*T/SDIF               
+      SUMYZ=SUMYZ+(Z-ZST(NCOLDM)-WZ*SDIF)*(Y-YST(NCOLDM)-WY*SDIF)*T/SDIF
+      A2=(WZ*SDIF)**2+(WY*SDIF)**2
+      B2=(Z-WZ*SDIF-ZST(NCOLDM))**2+(Y-WY*SDIF-YST(NCOLDM))**2 
+      C2=(Z-ZST(NCOLDM))**2+(Y-YST(NCOLDM))**2
+      DL2=(A2+B2-C2)**2/(4.0D0*A2)
+      DT2=B2-DL2
+      SUMLS=SUMLS+DL2*T/SDIF
+      SUMTS=SUMTS+DT2*T/SDIF
+ 120  KDUM=KDUM+125000   
+ 121  XST(NCOL)=X                                                       
+      YST(NCOL)=Y                                                       
+      ZST(NCOL)=Z                                                       
+      STO(NCOL)=ST                                                      
+      IF(NCOL.GE.NCOLM) THEN     
+       ID=ID+1                                                          
+       XID=DFLOAT(ID)                                                   
+       NCOL=0 
+      ENDIF                                                            
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY                       
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                
+      S1=RGAS(KGAS,I)                                                  
+      EI=EIN(KGAS,I)
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                   
+C  USE FLAT DISTRIBUTION OF  ELECTRON ENERGY BETWEEN E-EION AND 0.0 EV  
+C  SAME AS IN BOLTZMANN                                                 
+      R9=drand48(RDUM)
+      EXTRA=R9*(EOK-EI)                                                 
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                                                                       
+  666 IPT=IARRY(KGAS,I)
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1
+      IF(EOK.LT.EI) THEN
+C  FIX ENERGY LOSS SMALLER THAN INCIDENT ENERGY IF ERROR OCCURS
+       EI=EOK-0.0001D0
+      ENDIF
+C IF EXCITATION THEN ADD PROBABILITY,PENFRAC(1,I), OF TRANSFER TO GIVE
+C IONISATION OF THE OTHER GASES IN THE MIXTURE
+      IF(IPEN.EQ.0) GO TO 5
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+C ADD EXTRA IONISATION COLLISION
+       IEXTRA=IEXTRA+1
+      ENDIF
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C  ANISOTROPIC SCATTERING
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+        R31=drand48(RDUM)
+        F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+        IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING
+        F3=1.0D0-2.0D0*R3
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                             
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                             
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)             
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)
+  130 CONTINUE
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ                     
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11                                                
+  133 CONTINUE                                                          
+C   ------------------------------------------  
+      IF(J1.EQ.1) WRITE(6,201)                                         
+  201 FORMAT(/,'   VELZ    VELY  ENERGY   ID  DIFXX   DIFYY   DIFZZ   DI
+     /FYZ  DIFLNG  DIFTRN',/)       
+      WZ=WZ*1.0D+09
+      WY=WY*1.0D+09
+      IF(ST2.NE.0.0D0) DIFXX=5.0D+15*SUMXX/ST2
+      IF(ST1.NE.0.0D0) DIFYY=5.0D+15*SUMYY/ST1
+      IF(ST1.NE.0.0D0) DIFZZ=5.0D+15*SUMZZ/ST1
+      IF(ST1.NE.0.0D0) DIFYZ=-5.0D+15*SUMYZ/ST1
+      IF(ST1.NE.0.0D0) DIFLN=5.0D+15*SUMLS/ST1
+      IF(ST1.NE.0.0D0) DIFTR=5.0D+15*SUMTS/ST1
+      IF(NISO.EQ.0) DIFXX=5.0D+15*SUMVX/ST
+      EBAR=0.0D0
+      DO 300 IK=1,4000
+      TCFSUM=0.0D0
+      DO 299 KI=1,NGAS
+  299 TCFSUM=TCFSUM+TCF(KI,IK)
+  300 EBAR=EBAR+ES(IK)*SPEC(IK)/TCFSUM       
+      AVE=EBAR/ST
+      WZST(J1)=(Z-ZOLD)/(ST-STOLD)*1.0D+09
+      WYST(J1)=(Y-YOLD)/(ST-STOLD)*1.0D+09
+      AVEST(J1)=(EBAR-EBAROLD)/(ST-STOLD)
+      EBAROLD=EBAR
+      DFZZST(J1)=0.0D0
+      DFYYST(J1)=0.0D0
+      DFYZST(J1)=0.0D0
+      DFLNST(J1)=0.0D0
+      DFTRST(J1)=0.0D0
+      IF(J1.GT.2) THEN 
+       DFZZST(J1)=5.0D+15*(SUMZZ-SZZOLD)/(ST1-ST1OLD)
+       DFYYST(J1)=5.0D+15*(SUMYY-SYYOLD)/(ST1-ST1OLD)
+       DFYZST(J1)=5.0D+15*(SUMYZ-SYZOLD)/(ST1-ST1OLD)
+       DFLNST(J1)=5.0D+15*(SUMLS-SLNOLD)/(ST1-ST1OLD)
+       DFTRST(J1)=5.0D+15*(SUMTS-STROLD)/(ST1-ST1OLD)
+      ENDIF
+      DFXXST(J1)=5.0D+15*(SUMXX-SXXOLD)/(ST2-ST2OLD)
+      IF(NISO.EQ.0) DFXXST(J1)=5.0D+15*(SUMVX-SVXOLD)/(ST-STOLD)
+      ZOLD=Z
+      YOLD=Y
+      STOLD=ST
+      ST1OLD=ST1
+      ST2OLD=ST2
+      SVXOLD=SUMVX
+      SZZOLD=SUMZZ
+      SXXOLD=SUMXX
+      SYYOLD=SUMYY
+      SYZOLD=SUMYZ
+      SLNOLD=SUMLS
+      STROLD=SUMTS
+      WRITE(6,202) WZ,WY,AVE,ID,DIFXX,DIFYY,DIFZZ,
+     /DIFYZ,DIFLN,DIFTR                                                 
+  202 FORMAT(2(F7.2,1X),F7.4,1X,I4,6(F7.1,1X))   
+C  LOOP                                                                       
+  210 CONTINUE
+C CALCULATE ERRORS AND CHECK AVERAGES
+      TWZST=0.0D0
+      TWYST=0.0D0
+      TAVE=0.0D0
+      T2WZST=0.0D0
+      T2WYST=0.0D0
+      T2AVE=0.0D0
+      TZZST=0.0D0
+      TYYST=0.0D0
+      TXXST=0.0D0
+      TYZST=0.0D0
+      TLNST=0.0D0
+      TTRST=0.0D0
+      T2ZZST=0.0D0
+      T2YYST=0.0D0
+      T2XXST=0.0D0
+      T2YZST=0.0D0
+      T2LNST=0.0D0
+      T2TRST=0.0D0
+      DO 790 K=1,10
+      TWZST=TWZST+WZST(K)
+      TWYST=TWYST+WYST(K)
+      TAVE=TAVE+AVEST(K)
+      T2WZST=T2WZST+WZST(K)*WZST(K)
+      T2WYST=T2WYST+WYST(K)*WYST(K)
+      T2AVE=T2AVE+AVEST(K)*AVEST(K)
+      TXXST=TXXST+DFXXST(K)
+      T2XXST=T2XXST+DFXXST(K)*DFXXST(K)
+      IF(K.LT.3) GO TO 790
+      TZZST=TZZST+DFZZST(K)
+      TYYST=TYYST+DFYYST(K)
+      TYZST=TYZST+DFYZST(K)
+      TLNST=TLNST+DFLNST(K)
+      TTRST=TTRST+DFTRST(K)
+      T2ZZST=T2ZZST+DFZZST(K)*DFZZST(K)    
+      T2YYST=T2YYST+DFYYST(K)*DFYYST(K)     
+      T2YZST=T2YZST+DFYZST(K)*DFYZST(K)     
+      T2LNST=T2LNST+DFLNST(K)*DFLNST(K)    
+      T2TRST=T2TRST+DFTRST(K)*DFTRST(K)       
+  790 CONTINUE 
+      DWZ=100.0D0*DSQRT((T2WZST-TWZST*TWZST/10.0D0)/9.0D0)/WZ
+      DWY=100.0D0*DSQRT((T2WYST-TWYST*TWYST/10.0D0)/9.0D0)/DABS(WY)
+      DEN=100.0D0*DSQRT((T2AVE-TAVE*TAVE/10.0D0)/9.0D0)/AVE
+      DXXER=100.0D0*DSQRT((T2XXST-TXXST*TXXST/10.0D0)/9.0D0)/DIFXX  
+      DYYER=100.0D0*DSQRT((T2YYST-TYYST*TYYST/8.0D0)/7.0D0)/DIFYY       
+      DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZ    
+      DYZER=100.0D0*DSQRT((T2YZST-TYZST*TYZST/8.0D0)/7.0D0)/DABS(DIFYZ)
+      DFLER=100.0D0*DSQRT((T2LNST-TLNST*TLNST/8.0D0)/7.0D0)/DIFLN
+      DFTER=100.0D0*DSQRT((T2TRST-TTRST*TTRST/8.0D0)/7.0D0)/DIFTR 
+      DWZ=DWZ/DSQRT(10.0D0)
+      DWY=DWY/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DXXER=DXXER/DSQRT(10.0D0)
+      DYYER=DYYER/DSQRT(8.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
+      DYZER=DYZER/DSQRT(8.0D0)
+      DFLER=DFLER/DSQRT(8.0D0)
+      DFTER=DFTER/DSQRT(8.0D0)
+C CONVERT TO CM/SEC      
+      WZ=WZ*1.0D05
+      WY=WY*1.0D05
+C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
+      ANCATT=0.0D0
+      ANCION=0.0D0
+      DO 800 I=1,NGAS
+      ANCATT=ANCATT+ICOLL(I,3)
+  800 ANCION=ANCION+ICOLL(I,2)
+      ANCION=ANCION+IEXTRA
+      ATTER=0.0D0
+      IF(ANCATT.EQ.0.0D0) GO TO 810
+      ATTER=100.0D0*DSQRT(ANCATT)/ANCATT
+  810 ATT=ANCATT/(ST*WZ)*1.0D12
+      ALPER=0.0D0
+      IF(ANCION.EQ.0.0D0) GO TO 820
+      ALPER=100.0D0*DSQRT(ANCION)/ANCION
+  820 ALPHA=ANCION/(ST*WZ)*1.0D12 
+      RETURN                                                            
+      END 
+      SUBROUTINE MONTECT                                                
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO
+      COMMON/MIX2/ES(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000)
+     /,QEL(4000)                                                        
+      COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ 
+      COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
+      COMMON/DIFVEL/DIFLN,DIFTR
+      COMMON/DIFERL/DFLER,DFTER
+      COMMON/VEL/WX,WY,WZ            
+      COMMON/VELERR/DWX,DWY,DWZ
+      COMMON/CTOWNS/ALPHA,ATT 
+      COMMON/CTWNER/ALPER,ATTER   
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/RANM/RNMX(6)                             
+      DIMENSION XST(1000000),YST(1000000),ZST(1000000),STO(1000000)
+      DIMENSION WZST(10),WYST(10),WXST(10),AVEST(10)
+      DIMENSION DFZZST(10),DFYYST(10),DFXXST(10) 
+      DIMENSION DFYZST(10),DFXYST(10),DFXZST(10)
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY. 
+C   SUBROUTINE SOLVES MOTION IN COORDINATE SYSTEM WITH BFIELD
+C   ALIGNED ALONG X AXIS AND ELECTRIC FIELD AT AN ANGLE BTHETA IN
+C   THE X-Z PLANE.  THE VELOCITY VECTORS AND DIFFUSION ARE THEN
+C   ROTATED INTO THE STANDARD COORDINATE FRAME WITH THE ELECTRIC-
+C   FIELD ALONG Z-AXIS AND THE  BFIELD AT AN ANGLE BTHETA TO THE 
+C   ELECTRIC FIELD IN THE X-Z PLANE.
+C   BACKGROUND GAS MOTION INCLUDED AT TEMP = TEMPC
+C -------------------------------------------------------------------
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0 
+C CALC LONG AND TRANS ONLY FOR 90 DEGREES BETWEEN E AND B      
+      DIFLN=0.0D0
+      DIFTR=0.0D0
+      DFLER=0.0D0
+      DFTER=0.0D0
+      DIFXXR=0.0D0
+      DIFYYR=0.0D0
+      DIFZZR=0.0D0
+      DIFYZR=0.0D0
+      DIFXZR=0.0D0
+      DIFXYR=0.0D0
+      ST=0.0D0
+      ST1=0.0D0
+      SUMXX=0.0D0 
+      SUMYY=0.0D0                                                       
+      SUMZZ=0.0D0
+      SUMYZ=0.0D0
+      SUMXY=0.0D0
+      SUMXZ=0.0D0
+      ZROLD=0.0D0
+      YROLD=0.0D0
+      XROLD=0.0D0
+      SZZR=0.0D0
+      SYYR=0.0D0
+      SXXR=0.0D0
+      SXYR=0.0D0
+      SYZR=0.0D0
+      SXZR=0.0D0
+      STOLD=0.0D0
+      ST1OLD=0.0D0
+      ST2OLD=0.0D0
+      SZZOLD=0.0D0
+      SYYOLD=0.0D0
+      SXXOLD=0.0D0
+      SYZOLD=0.0D0
+      SXYOLD=0.0D0
+      SXZOLD=0.0D0
+      EBAROLD=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0
+      API=DACOS(-1.0D0)
+C CALC ROTATION MATRIX ANGLES
+      RCS=DCOS((BTHETA-90.0D0)*API/180.0D0)  
+      RSN=DSIN((BTHETA-90.0D0)*API/180.0D0)
+C            
+      RTHETA=BTHETA*API/180.0D0  
+      EFZ100=EFIELD*100.0D0*DSIN(RTHETA)
+      EFX100=EFIELD*100.0D0*DCOS(RTHETA)
+      F1=EFIELD*CONST2*DCOS(RTHETA)
+      F4=2.0D0*API
+      CONST9=CONST3*0.01D0                        
+      CONST10=CONST9*CONST9                      
+      EOVBR=EOVB*DSIN(RTHETA)
+      RDUM=RSTART                                                       
+      E1=ESTART    
+      N4000=4000
+      N300=300                                                     
+      ITMAX=10 
+      ID=0                                                              
+      NCOL=0                                                            
+      NNULL=0    
+      IEXTRA=0             
+C GENERATE INITIAL RANDOM NUMBER FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C NUMBER OF COLLISIONS FOR DECORRELATION                            
+      NCOLM=1000000                                                     
+      TDASH=0.0D0 
+C                                                                       
+C     INITIAL DIRECTION COSINES                                         
+C                                                                       
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI)                                        
+C     INITIAL VELOCITY
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT                               
+      CY1=DCY1*VTOT             
+      CZ1=DCZ1*VTOT                                           
+      J2M=NMAX/ITMAX                                                    
+C MAIN LOOP 
+      DO 210 J1=1,ITMAX                                                 
+      DO 133 J2=1,J2M
+    1 R1=drand48(RDUM) 
+      T=-DLOG(R1)/TCFMX+TDASH                                           
+      TDASH=T                                                           
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      DZ=(CZ1*SINWT+(EOVBR-CY1)*(1.0D0-COSWT))/WB
+      DX=CX1*T+F1*T*T
+      E=E1+DZ*EFZ100+DX*EFX100 
+C CALCULATE ELECTRON VELOCITY IN LAB FRAME
+      CX2=CX1+2.0D0*F1*T
+      CY2=(CY1-EOVBR)*COSWT+CZ1*SINWT+EOVBR
+      CZ2=CZ1*COSWT-(CY1-EOVBR)*SINWT
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C  CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF  
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET,EOK
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                             
+      IE=DMIN0(IE,N4000)                                               
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION           
+      R4=drand48(RDUM)                                                  
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)            
+      IF(R4.GT.TLIM) THEN                                               
+       NNULL=NNULL+1                                                    
+       GO TO 1  
+      ENDIF 
+      NCOL=NCOL+1                                                     
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+C     VTOT=1.0D0/CONST11
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11                                         
+C  CALCULATE POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T                                            
+      TDASH=0.0D0                                                       
+C CALC NEW POSITION
+      X=X+DX    
+      Y=Y+EOVBR*T+((CY1-EOVBR)*SINWT+CZ1*(1.0D0-COSWT))/WB
+      Z=Z+DZ                                   
+      ST=ST+T                                                           
+      IT=DINT(T+1.0D0)                                               
+      IT=DMIN0(IT,N300)                                               
+      TIME(IT)=TIME(IT)+1.0D0  
+C ENERGY SPECTRUM FOR  0 KELVIN FRAME
+      SPEC(IE)=SPEC(IE)+1.0D0                                           
+      WZ=Z/ST
+      WY=Y/ST
+      WX=X/ST
+      IF(J1.LT.3) GO TO 121
+      KDUM=0
+      DO 120 J=1,4 
+      NCOLDM=NCOL+KDUM
+      IF(NCOLDM.GT.NCOLM) NCOLDM=NCOLDM-NCOLM
+      ST1=ST1+T     
+      SDIF=ST-STO(NCOLDM)                                               
+      SUMZZ=SUMZZ+((Z-ZST(NCOLDM)-WZ*SDIF)**2)*T/SDIF
+      SUMYY=SUMYY+((Y-YST(NCOLDM)-WY*SDIF)**2)*T/SDIF
+      SUMXX=SUMXX+((X-XST(NCOLDM)-WX*SDIF)**2)*T/SDIF               
+      SUMYZ=SUMYZ+(Z-ZST(NCOLDM)-WZ*SDIF)*(Y-YST(NCOLDM)-WY*SDIF)*T/SDIF
+      SUMXY=SUMXY+(X-XST(NCOLDM)-WX*SDIF)*(Y-YST(NCOLDM)-WY*SDIF)*T/SDIF
+      SUMXZ=SUMXZ+(X-XST(NCOLDM)-WX*SDIF)*(Z-ZST(NCOLDM)-WZ*SDIF)*T/SDIF
+ 120  KDUM=KDUM+125000   
+ 121  XST(NCOL)=X                                                       
+      YST(NCOL)=Y                                                       
+      ZST(NCOL)=Z                                                       
+      STO(NCOL)=ST                                                      
+      IF(NCOL.GE.NCOLM) THEN      
+       ID=ID+1                                                          
+       XID=DFLOAT(ID)                                                   
+       NCOL=0  
+      ENDIF                                                           
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM) 
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY       
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                               
+      S1=RGAS(KGAS,I)                                                  
+      EI=EIN(KGAS,I)
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                    
+C  USE FLAT DISTRIBUTION OF  ELECTRON ENERGY BETWEEN E-EION AND 0.0 EV  
+C  SAME AS IN BOLTZMANN                                                 
+      R9=drand48(RDUM)  
+      EXTRA=R9*(EOK-EI)                                               
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                                                                       
+  666 IPT=IARRY(KGAS,I)
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF
+C IF EXCITATION THEN ADD PROBABILITY, PENFRA(1,I), OF TRANSFER TO GIVE
+C IONISATION OF THE OTHER GASES IN THE MIXTURE
+      IF(IPEN.EQ.0) GO TO 5
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+C ADD EXTRA IONISATION COLLISION
+       IEXTRA=IEXTRA+1
+      ENDIF
+    5 S2=(S1*S1)/(S1-1.0D0)  
+C ANISOTROPIC SCATTERING 
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+        R31=drand48(RDUM)
+        F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+        IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING
+        F3=1.0D0-2.0D0*R3
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                            
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                       
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6
+      F5=DSIN(THETA)
+      DZCOM=DMIN1(DZCOM,1.0D0)
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                          
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)    
+  130 CONTINUE            
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME  
+      VTOT=CONST9*DSQRT(E1)          
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11
+  133 CONTINUE                                                          
+C   ------------------------------------------  
+      IF(J1.EQ.1) WRITE(6,201)                                         
+  201 FORMAT(/,'   VELZ    VELY    VELX   ENERGY  ID  DIFXX  DIFYY  DIFZ
+     /Z  DIFYZ  DIFXZ  DIFXY',/)
+      WZ=WZ*1.0D+09
+      WY=WY*1.0D+09
+      WX=WX*1.0D+09
+C CALCULATE ROTATED VECTORS AND POSITIONS
+      WZR=WZ*RCS-WX*RSN
+      WYR=WY
+      WXR=WZ*RSN+WX*RCS
+      ZR=Z*RCS-X*RSN
+      YR=Y
+      XR=Z*RSN+X*RCS
+      EBAR=0.0D0
+      DO 300 IK=1,4000
+      TCFSUM=0.0
+      DO 299 KI=1,NGAS
+  299 TCFSUM=TCFSUM+TCF(KI,IK)
+ 300  EBAR=EBAR+ES(IK)*SPEC(IK)/TCFSUM      
+      AVE=EBAR/ST
+      WZST(J1)=(ZR-ZROLD)/(ST-STOLD)*1.0D+09
+      WYST(J1)=(YR-YROLD)/(ST-STOLD)*1.0D+09
+      WXST(J1)=(XR-XROLD)/(ST-STOLD)*1.0D+09
+      AVEST(J1)=(EBAR-EBAROLD)/(ST-STOLD)
+      EBAROLD=EBAR
+      IF(J1.LT.3) GO TO 100 
+      DIFXX=5.0D+15*SUMXX/ST1
+      DIFYY=5.0D+15*SUMYY/ST1
+      DIFZZ=5.0D+15*SUMZZ/ST1
+      DIFYZ=5.0D+15*SUMYZ/ST1
+      DIFXZ=5.0D+15*SUMXZ/ST1
+      DIFXY=5.0D+15*SUMXY/ST1
+C CALCULATE  ROTATED TENSOR .
+      DIFXXR=DIFXX*RCS*RCS+DIFZZ*RSN*RSN+2.0D0*RCS*RSN*DIFXZ
+      DIFYYR=DIFYY
+      DIFZZR=DIFXX*RSN*RSN+DIFZZ*RCS*RCS-2.0D0*RCS*RSN*DIFXZ
+      DIFXYR=RCS*DIFXY+RSN*DIFYZ   
+      DIFYZR=RSN*DIFXY-RCS*DIFYZ
+      DIFXZR=(RCS*RCS-RSN*RSN)*DIFXZ-RSN*RCS*(DIFXX-DIFZZ)
+      SXXR=SUMXX*RCS*RCS+SUMZZ*RSN*RSN+2.0D0*RCS*RSN*SUMXZ
+      SYYR=SUMYY
+      SZZR=SUMXX*RSN*RSN+SUMZZ*RCS*RCS-2.0D0*RCS*RSN*SUMXZ
+      SXYR=RCS*SUMXY+RSN*SUMYZ
+      SYZR=RSN*SUMXY-RCS*SUMYZ
+      SXZR=(RCS*RCS-RSN*RSN)*SUMXZ-RSN*RCS*(SUMXX-SUMZZ)
+C 
+  100 DFZZST(J1)=0.0D0   
+      DFYYST(J1)=0.0D0
+      DFXXST(J1)=0.0D0
+      DFXYST(J1)=0.0D0
+      DFYZST(J1)=0.0D0
+      DFXZST(J1)=0.0D0
+      IF(J1.GT.2) THEN 
+       DFZZST(J1)=5.0D+15*(SZZR-SZZOLD)/(ST1-ST1OLD)
+       DFYYST(J1)=5.0D+15*(SYYR-SYYOLD)/(ST1-ST1OLD)
+       DFXXST(J1)=5.0D+15*(SXXR-SXXOLD)/(ST1-ST1OLD)
+       DFXYST(J1)=5.0D+15*(SXYR-SXYOLD)/(ST1-ST1OLD)
+       DFYZST(J1)=5.0D+15*(SYZR-SYZOLD)/(ST1-ST1OLD)
+       DFXZST(J1)=5.0D+15*(SXZR-SXZOLD)/(ST1-ST1OLD)
+      ENDIF               
+      ZROLD=ZR
+      YROLD=YR
+      XROLD=XR
+      STOLD=ST
+      ST1OLD=ST1
+      SZZOLD=SZZR
+      SYYOLD=SYYR
+      SXXOLD=SXXR
+      SXYOLD=SXYR
+      SYZOLD=SYZR
+      SXZOLD=SXZR
+C OUTPUT ROTATED VECTORS AND TENSOR       
+      WRITE(6,202) WZR,WYR,WXR,AVE,ID,DIFXXR,DIFYYR,DIFZZR,
+     /DIFYZR,DIFXZR,DIFXYR                                             
+  202 FORMAT(3(F7.2,1X),1X,F7.4,I4,6(F7.1))   
+C LOOP                                                                      
+  210 CONTINUE
+C CALCULATE ERRORS AND CHECK AVERAGES
+      TWZST=0.0D0
+      TWYST=0.0D0
+      TWXST=0.0D0
+      TAVE=0.0D0
+      T2WZST=0.0D0
+      T2WYST=0.0D0
+      T2WXST=0.0D0
+      T2AVE=0.0D0
+      TZZST=0.0D0
+      TYYST=0.0D0
+      TXXST=0.0D0
+      TXYST=0.0D0
+      TYZST=0.0D0
+      TXZST=0.0D0
+      T2ZZST=0.0D0
+      T2YYST=0.0D0
+      T2XXST=0.0D0
+      T2XYST=0.0D0
+      T2YZST=0.0D0
+      T2XZST=0.0D0
+      DO 790 K=1,10
+      TWZST=TWZST+WZST(K)
+      TWYST=TWYST+WYST(K)
+      TWXST=TWXST+WXST(K)
+      TAVE=TAVE+AVEST(K)
+      T2WZST=T2WZST+WZST(K)*WZST(K)
+      T2WYST=T2WYST+WYST(K)*WYST(K)
+      T2WXST=T2WXST+WXST(K)*WXST(K)
+      T2AVE=T2AVE+AVEST(K)*AVEST(K)
+      IF(K.LT.3) GO TO 790
+      TZZST=TZZST+DFZZST(K)
+      TYYST=TYYST+DFYYST(K)
+      TXXST=TXXST+DFXXST(K)
+      TXYST=TXYST+DFXYST(K)
+      TYZST=TYZST+DFYZST(K)
+      TXZST=TXZST+DFXZST(K)  
+      T2ZZST=T2ZZST+DFZZST(K)*DFZZST(K)
+      T2YYST=T2YYST+DFYYST(K)*DFYYST(K)
+      T2XXST=T2XXST+DFXXST(K)*DFXXST(K)    
+      T2XYST=T2XYST+DFXYST(K)*DFXYST(K)
+      T2YZST=T2YZST+DFYZST(K)*DFYZST(K)
+      T2XZST=T2XZST+DFXZST(K)*DFXZST(K)
+  790 CONTINUE
+      DWZ=100.0D0*DSQRT((T2WZST-TWZST*TWZST/10.0D0)/9.0D0)/WZR
+      DWY=100.0D0*DSQRT((T2WYST-TWYST*TWYST/10.0D0)/9.0D0)/DABS(WYR)
+      DWX=100.0D0*DSQRT((T2WXST-TWXST*TWXST/10.0D0)/9.0D0)/DABS(WXR) 
+      DEN=100.0D0*DSQRT((T2AVE-TAVE*TAVE/10.0D0)/9.0D0)/AVE
+      DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZR
+      DYYER=100.0D0*DSQRT((T2YYST-TYYST*TYYST/8.0D0)/7.0D0)/DIFYYR
+      DXXER=100.0D0*DSQRT((T2XXST-TXXST*TXXST/8.0D0)/7.0D0)/DIFXXR
+      DXYER=100.0D0*DSQRT((T2XYST-TXYST*TXYST/8.0D0)/7.0D0)/DABS(DIFXYR)
+      DYZER=100.0D0*DSQRT((T2YZST-TYZST*TYZST/8.0D0)/7.0D0)/DABS(DIFYZR)
+      DXZER=100.0D0*DSQRT((T2XZST-TXZST*TXZST/8.0D0)/7.0D0)/DABS(DIFXZR)
+      DWZ=DWZ/DSQRT(10.0D0)
+      DWY=DWY/DSQRT(10.0D0)
+      DWX=DWX/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
+      DYYER=DYYER/DSQRT(8.0D0)
+      DXXER=DXXER/DSQRT(8.0D0)
+      DXYER=DXYER/DSQRT(8.0D0)
+      DYZER=DYZER/DSQRT(8.0D0)
+      DXZER=DXZER/DSQRT(8.0D0)
+C LOAD ROTATED VALUES INTO ARRAYS
+      WZ=WZR
+      WX=WXR
+      WY=WYR
+      DIFXX=DIFXXR
+      DIFYY=DIFYYR
+      DIFZZ=DIFZZR
+      DIFYZ=DIFYZR
+      DIFXZ=DIFXZR
+      DIFXY=DIFXYR          
+C CONVERT TO CM/SEC.
+      WZ=WZ*1.0D05
+      WY=WY*1.0D05
+      WX=WX*1.0D05
+C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
+      ANCATT=0.0D0
+      ANCION=0.0D0
+      DO 800 I=1,NGAS
+      ANCATT=ANCATT+ICOLL(I,3)
+  800 ANCION=ANCION+ICOLL(I,2)
+      ANCION=ANCION+IEXTRA
+      ATTER=0.0D0
+      IF(ANCATT.EQ.0.0D0) GO TO 810
+      ATTER=100.0D0*DSQRT(ANCATT)/ANCATT
+  810 ATT=ANCATT/(ST*WZ)*1.0D12
+      ALPER=0.0D0
+      IF(ANCION.EQ.0.0D0) GO TO 820
+      ALPER=100.0D0*DSQRT(ANCION)/ANCION
+  820 ALPHA=ANCION/(ST*WZ)*1.0D12                
+      RETURN                                                            
+      END 
+      SUBROUTINE ELIMITT(IELOW)                                         
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM            
+      COMMON/RANM/RNMX(6)                 
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND TESTS TO FIND IF THE UPPER ENERGY  
+C   LIMIT FOR THE ELECTRON ENERGY IS EXCEEDED. 
+C    IF ENERGY LIMIT IS OK       IELOW = 0
+C    IF ENERGY LIMIT IS EXCEEDED IELOW = 1          
+C   THE TEST IS CARRIED OUT FOR A SAMPLE OF COLLISIONS THAT ARE
+C   SMALLER THAN THE FULL SAMPLE BY A FACTOR OF 1/ISAMP
+C   
+C   USED WITH MAGNETIC FIELD B =0.0   ELECTRIC FIELD IN Z DIRECTION.
+C -------------------------------------------------------------------
+      ISAMP=10
+      SMALL=1.0D-20                                                     
+      RDUM=RSTART                                                       
+      E1=ESTART    
+      N4000=4000                                                     
+      TDASH=0.0D0    
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9    
+C GENERATE RANDOM NUMBER FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C                                                                       
+C     INITIAL DIRECTION COSINES                                         
+C                                                                       
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI)                                        
+C                                                                       
+      BP=EFIELD*EFIELD*CONST1                                           
+      F1=EFIELD*CONST2                                                  
+      F2=EFIELD*CONST3                                                  
+      F4=2.0D0*DACOS(-1.0D0)                                            
+      J2M=NMAX/ISAMP 
+C MAIN LOOP                                                             
+      DO 210 J1=1,J2M  
+    1 R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH                                          
+      TDASH=T                                                           
+      AP=DCZ1*F2*DSQRT(E1)
+      E=E1+(AP+BP*T)*T              
+C CALCULATE DIRECTION COSINES BEFORE COLLISION
+      CONST6=DSQRT(E1/E)
+      DCX2=DCX1*CONST6
+      DCY2=DCY1*CONST6
+      DCZ2=DCZ1*CONST6+EFIELD*T*CONST5/DSQRT(E)       
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+      IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ELECTRON VELOCITY VECTORS VEX,VEY,VEZ
+      VEX=DCX2*CONST9*DSQRT(E)
+      VEY=DCY2*CONST9*DSQRT(E)
+      VEZ=DCZ2*CONST9*DSQRT(E)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET ,EOK
+      EOK=((VEX-VGX)**2+(VEY-VGY)**2+(VEZ-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1
+      IE=DMIN0(IE,N4000) 
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+C                                                                       
+      R5=drand48(RDUM)
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)                           
+      IF(R5.GT.TLIM) GO TO 1                                           
+C                                                                       
+      IF(IE.EQ.4000) THEN
+C ELECTRON ENERGY OUT OF RANGE
+       IELOW=1
+       RETURN
+      ENDIF
+      TDASH=0.0D0
+C                                                                       
+C  CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+C                       
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))                                 
+      DXCOM=(VEX-VGX)*CONST11                                           
+      DYCOM=(VEY-VGY)*CONST11
+      DZCOM=(VEZ-VGZ)*CONST11              
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY       
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                               
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)                                                    
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                    
+      R9=drand48(RDUM)
+      EXTRA=R9*(EOK-EI)                                                
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                        
+  666 IPT=IARRY(KGAS,I)                                               
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF
+      S2=(S1*S1)/(S1-1.0D0)
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I))  F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+       F3=1.0D0-2.0D0*R3
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM) 
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                             
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                         
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA) 
+      DZCOM=DMIN1(DZCOM,1.0D0)                                         
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM) 
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)
+  130 CONTINUE
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      CONST12=CONST9*DSQRT(E1)
+      VXLAB=DCX1*CONST12+VGX
+      VYLAB=DCY1*CONST12+VGY
+      VZLAB=DCZ1*CONST12+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(VXLAB*VXLAB+VYLAB*VYLAB+VZLAB*VZLAB)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=VXLAB*CONST11
+      DCY1=VYLAB*CONST11
+      DCZ1=VZLAB*CONST11
+C LOOP                                                                 
+  210 CONTINUE
+      IELOW=0
+      RETURN                                                            
+      END 
+      SUBROUTINE ELIMITBT(IELOW)                                        
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6) 
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND TESTS TO FIND IF THE UPPER ENERGY  
+C   LIMIT FOR THE ELECTRON ENERGY IS EXCEEDED. 
+C    IF ENERGY LIMIT IS OK       IELOW = 0
+C    IF ENERGY LIMIT IS EXCEEDED IELOW = 1          
+C   THE TEST IS CARRIED OUT FOR A SAMPLE OF COLLISIONS THAT ARE
+C   SMALLER THAN THE FULL SAMPLE BY A FACTOR OF 1/ISAMP
+C   
+C   USED WITH MAGNETIC FIELD B AT 90 DEGREES TO ELECTRIC FIELD  
+C -------------------------------------------------------------------
+      ISAMP=20      
+      SMALL=1.0D-20 
+      EF100=EFIELD*100.0D0                                              
+      RDUM=RSTART                                                       
+      E1=ESTART    
+      N4000=4000                                                     
+      TDASH=0.0D0 
+C GENERATE RANDOM NUMBER FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C
+      CONST9=CONST3*0.01D0 
+      CONST10=CONST9*CONST9                                             
+C                                                                       
+C     INITIAL DIRECTION COSINES                                         
+C                                                                       
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI)                                        
+C                                                                       
+      VTOT=CONST9*DSQRT(E1)                                             
+      CX1=DCX1*VTOT                                                     
+      CY1=DCY1*VTOT
+      CZ1=DCZ1*VTOT                                                     
+      F4=2.0D0*DACOS(-1.0D0)                                            
+      J2M=NMAX/ISAMP 
+C MAIN LOOP                                                             
+      DO 210 J1=1,J2M  
+    1 R1=drand48(RDUM) 
+      T=-DLOG(R1)/TCFMX+TDASH                                          
+      TDASH=T                                                           
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      DZ=(CZ1*SINWT+(EOVB-CY1)*(1.0D0-COSWT))/WB                        
+      E=E1+DZ*EF100              
+C CALC ELECTRON VELOCITY IN LAB FRAME
+      CX2=CX1
+      CY2=(CY1-EOVB)*COSWT+CZ1*SINWT+EOVB      
+      CZ2=CZ1*COSWT-(CY1-EOVB)*SINWT
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+      IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET , EOK
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10         
+      IE=DINT(EOK/ESTEP)+1 
+      IE=DMIN0(IE,N4000) 
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+C                                                                       
+      R5=drand48(RDUM) 
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)                               
+      IF(R5.GT.TLIM) GO TO 1                                          
+C                       
+      IF(IE.EQ.4000) THEN 
+C ELECTRON ENERGY OUT OF RANGE
+       IELOW=1
+       RETURN
+      ENDIF                                                           
+      TDASH=0.0D0                       
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME           
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11                     
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY         
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                 
+      S1=RGAS(KGAS,I)                                                  
+      EI=EIN(KGAS,I)                                                   
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                   
+      R9=drand48(RDUM)
+      EXTRA=R9*(EOK-EI)                                                
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                        
+  666 IPT=IARRY(KGAS,I)                                               
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF
+      S2=(S1*S1)/(S1-1.0D0)
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+       F3=1.0D0-2.0D0*R3
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                             
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                         
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA) 
+      DCZ2=DMIN1(DZCOM,1.0D0)
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM) 
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)
+  130 CONTINUE
+C  TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11    
+C LOOP                                                                 
+  210 CONTINUE
+      IELOW=0
+      RETURN                                                            
+      END 
+      SUBROUTINE ELIMITCT(IELOW)                                       
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6)  
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND TESTS TO FIND IF THE UPPER ENERGY  
+C   LIMIT FOR THE ELECTRON ENERGY IS EXCEEDED. 
+C    IF ENERGY LIMIT IS OK       IELOW = 0
+C    IF ENERGY LIMIT IS EXCEEDED IELOW = 1          
+C   THE TEST IS CARRIED OUT FOR A SAMPLE OF COLLISIONS THAT ARE
+C   SMALLER THAN THE FULL SAMPLE BY A FACTOR OF 1/ISAMP
+C   
+C   USED WITH MAGNETIC FIELD B AT ANGLES BETWEEN 0 AND 90 DEGREES TO
+C   THE ELECTRIC FIELD.
+C -------------------------------------------------------------------
+      ISAMP=20
+      SMALL=1.0D-20
+      API=DACOS(-1.0D0) 
+      RTHETA=BTHETA*API/180.0D0
+      EFZ100=EFIELD*100.0D0*DSIN(RTHETA)
+      EFX100=EFIELD*100.0D0*DCOS(RTHETA)
+      F1=EFIELD*CONST2*DCOS(RTHETA)
+      F4=2.0D0*API
+      EOVBR=EOVB*DSIN(RTHETA)
+      RDUM=RSTART                                                       
+      E1=ESTART    
+      N4000=4000                                                     
+      TDASH=0.0D0 
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9            
+C GENERATE RANDOM NUMBER FOR MAXWELL BOLTZMAN
+      CALL GERJAN
+      IMBPT=0
+C                                                                       
+C     INITIAL DIRECTION COSINES                                         
+C                                                                       
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI)                                        
+C                                                                       
+      VTOT=CONST9*DSQRT(E1)                                             
+      CX1=DCX1*VTOT                                                     
+      CY1=DCY1*VTOT
+      CZ1=DCZ1*VTOT                                                     
+      J2M=NMAX/ISAMP 
+C MAIN LOOP                                                             
+      DO 210 J1=1,J2M  
+    1 R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH                                         
+      TDASH=T                                                           
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      DZ=(CZ1*SINWT+(EOVBR-CY1)*(1.0D0-COSWT))/WB 
+      DX=CX1*T+F1*T*T                                                   
+      E=E1+DZ*EFZ100+DX*EFX100           
+      CX2=CX1+2.0D0*F1*T
+      CY2=(CY1-EOVBR)*COSWT+CZ1*SINWT+EOVBR
+      CZ2=CZ1*COSWT-(CY1-EOVBR)*SINWT
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+      IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1 
+      IE=DMIN0(IE,N4000) 
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+C                                                                       
+      R5=drand48(RDUM)
+      TLIM=TCF(KGAS,IE)/TCFMAX(KGAS)                                   
+      IF(R5.GT.TLIM) GO TO 1 
+C                                                                       
+C  CALCULATE DIRECTION COSINES AT INSTANT BEFORE COLLISION
+C                       
+      IF(IE.EQ.4000) THEN 
+C ELECTRON ENERGY OUT OF RANGE
+       IELOW=1
+       RETURN
+      ENDIF 
+      TDASH=0.0D0 
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11                                          
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)  
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY       
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                 
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)                                                    
+      IF(IPN(KGAS,I).LE.0) GO TO 666                                   
+      R9=drand48(RDUM) 
+      EXTRA=R9*(EOK-EI)                                               
+      EI=EXTRA+EI                                                       
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                        
+  666 IPT=IARRY(KGAS,I)                                               
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF
+      S2=(S1*S1)/(S1-1.0D0)
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+       F3=1.0D0-2.0D0*R3
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                            
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA) 
+      DZCOM=DMIN1(DZCOM,1.0D0)
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM) 
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6
+       DCX1=F9*F5
+       DCY1=F8*F5
+       GO TO 130
+      ENDIF                                          
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)
+  130 CONTINUE
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11    
+C LOOP                                                                 
+  210 CONTINUE
+      IELOW=0
+      RETURN                                                            
+      END 
+      SUBROUTINE ALPCALCT 
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
+      COMMON/SSTOUT/VDOUT,VDERR,WSOUT,WSERR,DLOUT,DLERR,DTOUT,DTERR,
+     /ALPHSST,ALPHERR,ATTSST,ATTERR         
+      COMMON/TOFOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWV,TOFWVER,
+     /TOFDL,TOFDLER,TOFDT,TOFDTER,TOFWR,TOFWRER,RATTOF,RATOFER 
+      COMMON/VEL/WX,WY,WZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/CTCALC/ZPLANE1,ZPLANE2,ZPLANE3,ZPLANE4,ZPLANE5,ZPLANE6,
+     /ZPLANE7,ZPLANE8,IZFINAL
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+C ---------------------------------------------------------------------      
+C  ESTIMATE TIME STEP AND SPACE STEPS FOR AVALANCHE SIMULATION IN 
+C  TIME OF FLIGHT AND STEADY STATE TOWNSEND SIMULATIONS.
+C  USES ESTIMATED GAIN OF 3.0 BETWEEN PLANES. 
+C  CALLS SST AND TOF SUBROUTINES AND UPDATES ALPHA AND ATT
+C ------------------------------------------------------------------
+      IMAX=NMAX/10000000 
+      IF(IMAX.LT.5) IMAX=5 
+      NMAX=IMAX*10000000
+      ALPHAST=0.85D0*DABS(ALPHA-ATT) 
+      VDST=WZ*1.D-5                                                 
+      TSTEP=DLOG(3.0D0)/(ALPHAST*VDST*1.0D5)
+      ZSTEP=DLOG(3.0D0)/ALPHAST
+C  CONVERT TO METRES AND PICOSECONDS     
+      TSTEP=TSTEP*1.0D12
+      ZSTEP=ZSTEP*0.01D0
+      TFINAL=7.0D0*TSTEP
+      ITFINAL=7
+      ZFINAL=8.0D0*ZSTEP
+      IZFINAL=8    
+      ZPLANE1=ZSTEP
+      ZPLANE2=2.0D0*ZSTEP
+      ZPLANE3=3.0D0*ZSTEP
+      ZPLANE4=4.0D0*ZSTEP
+      ZPLANE5=5.0D0*ZSTEP
+      ZPLANE6=6.0D0*ZSTEP
+      ZPLANE7=7.0D0*ZSTEP
+      ZPLANE8=8.0D0*ZSTEP
+C CALC SST
+      WRITE(6,11)
+   11 FORMAT(/,2X,'SOLUTION FOR STEADY STATE TOWNSEND PARAMETERS',/,'  -
+     /------------------------------------------------')        
+      ZSTEPM=ZSTEP*1.0D6
+      WRITE(6,12) ZSTEPM
+   12 FORMAT(1(/),' SPACE STEP BETWEEN SAMPLING PLANES =',D12.5,' MICRON
+     /S.',/)     
+      CALL MONTEFDT
+      CALL SST
+C--------------------------------------------------------      
+C LOAD NEW ALPHA AND ATTACHMENT INTO COMMON BLOCKS
+C-----------------------------------------------
+      ALPHA=ALPHSST
+      ALPER=ALPHERR
+      ATT=ATTSST
+      ATTER=ATTERR        
+C-----------------------------------------------      
+      WRITE(6,18) 
+   18 FORMAT(/,' SST DRIFT VELOCITIES')   
+      WRITE(6,19) VDOUT,VDERR,WSOUT,WSERR
+   19 FORMAT(/,' VD=',F9.1,' +- ',F6.2,' %   WS=',F9.1,' +- ',F6.2,' %')
+      WRITE(6,20)      
+   20 FORMAT(/,' SST DIFFUSION')  
+      WRITE(6,21) DLOUT,DLERR,DTOUT,DTERR   
+   21 FORMAT(/,' DL=',F9.1,' +- ',F6.1,' %   DT=',F9.1,' +- ',F6.2,' %')
+      WRITE(6,22) 
+   22 FORMAT(/,' SST TOWNSEND COEFICIENTS')
+      WRITE(6,23) ALPHSST,ALPHERR,ATTSST,ATTERR
+   23 FORMAT(/,' ALPHA=',F9.1,' +- ',F6.2,' %    ATT=',F9.1,' +- ',F6.2,
+     /' %')                                            
+C CALC TIME OF FLIGHT AND PT 
+      WRITE(6,25)
+   25 FORMAT(/,2X,'SOLUTION FOR PULSED TOWNSEND AND TIME OF FLIGHT PARAM
+     /ETERS',/,'  ------------------------------------------------------
+     /--------') 
+      WRITE(6,26) TSTEP
+   26 FORMAT(1(/),'  TIME STEP BETWEEN SAMPLING PLANES =',D12.5,' PICOSE
+     /CS.',/)                     
+      CALL MONTEFTT                             
+      CALL FRIEDLANDT 
+      CALL PT
+      CALL TOF
+      WRITE(6,27) RALPHA,RALPER,RATTOF,RATOFER
+   27 FORMAT(/,' PT IONISATION AND ATTACHMENT RATES *10**12/SEC',/,' ALP
+     /HA=',D10.3,' +- ',F6.2,' %      ATT=',D10.3,' +- ',F6.2,' %')    
+      WRITE(6,28) 
+   28 FORMAT(/,' TOF DIFFUSION')
+      WRITE(6,29) TOFDL,TOFDLER,TOFDT,TOFDTER 
+   29 FORMAT(/,'  DL=',F8.1,' +- ',F6.1,' %       DT=',F8.1,' +- ',F6.1,
+     /' %')     
+      WRITE(6,30)
+   30 FORMAT(/,' TOF DRIFT VELOCITY')
+      WRITE(6,31) TOFWR,TOFWRER   
+   31 FORMAT(/,'    WR=',F8.2,' +-',F6.1,' %') 
+      WRZN=TOFWR*1.0D05
+      FC1=WRZN/(2.0D0*TOFDL)
+      FC2=((RALPHA-RATTOF)*1.0D12)/TOFDL
+      ALPTEST=FC1-DSQRT(FC1**2-FC2) 
+      WRITE(6,888) ALPTEST
+  888 FORMAT(/,'TOWNSEND COEFICIENT (ALPHA-ATT) CALCULATED FROM TOF RESU
+     /LTS:',/,' ALPHA-ATT /CM.=',D11.4)                             
+      RETURN                                                     
+      END                                                               
+      SUBROUTINE MONTEFTT                                               
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),IPLAST(6),ISIZE(6),
+     /PENFRA(6,3,260),TCFMAX(6)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6)
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS
+      COMMON/IPT/XS(200),YS(200),ZS(200),TS(200),ES(200),
+     /DCX(200),DCY(200),DCZ(200),IPL(200)
+      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT 
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+      DIMENSION EPRM(4000000),IESPECP(100)            
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.
+C   THIS ROUTINE HANDLES TERMINATIONS AT FIXED DRIFT TIMES.   
+C ------------------------------------------------------------------- 
+      S=0.0D0 
+      ST=0.0D0 
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0 
+      ZTOT=0.0D0
+      ZTOTS=0.0D0
+      TTOT=0.0D0
+      TTOTS=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9
+      API=DACOS(-1.0D0)
+      DO 25 I=1,300
+   25 TIME(I)=0.0D0
+      DO 26 I=1,5
+      DO 26 K=1,6
+   26 ICOLL(K,I)=0
+      DO 27 I=1,260
+      DO 27 K=1,6
+   27 ICOLN(K,I)=0
+      DO 28 I=1,4000
+   28 SPEC(I)=0.0D0            
+      DO 33 I=1,100
+   33 IESPECP(I)=0 
+      DO 34 I=1,8
+      ETPL(I)=0.0D0
+      XTPL(I)=0.0D0
+      YTPL(I)=0.0D0
+      ZTPL(I)=0.0D0
+      TTPL(I)=0.0D0
+      XXTPL(I)=0.0D0
+      YYTPL(I)=0.0D0
+      ZZTPL(I)=0.0D0
+      VZTPL(I)=0.0D0
+   34 NETPL(I)=0                                   
+      ID=0
+      N4000=4000
+      N300=300
+      N100=100
+      I100=0                                                            
+      NCOL=0                                                            
+      NNULL=0
+      NELEC=0
+      NEION=0
+      NMXADD=0
+      NPONT=0 
+      NCLUS=0
+      J1=1 
+      ZSTRT=0.0D0
+      TSSTRT=0.0D0                                                    
+C     INITIAL DIRECTION COSINES                                         
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI) 
+      E100=E1
+      DCZ100=DCZ1
+      DCX100=DCX1
+      DCY100=DCY1                                       
+      BP=EFIELD*EFIELD*CONST1                                           
+      F1=EFIELD*CONST2                                                  
+      F2=EFIELD*CONST3                                                  
+      F4=2.0D0*API
+C GENERATE INITIAL RANDOM NUMBERS FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C
+      JPRINT=NMAX/10
+      IPRINT=0
+      ITER=0
+      IPLANE=0
+      IPRIM=0
+C  LOOP FOR NEW STARTING ELECTRONS 
+  544 IPRIM=IPRIM+1 
+      IF(IPRIM.GT.1) THEN
+C CHECK IF PROGRAM WILL EXCEED MAXIMUM NUMBER OF ITERATIONS 
+C IN THIS CYCLE IF SO OUTPUT CURRENT RESULTS. 
+       IF(ITER.GT.NMAX) THEN
+        IPRIM=IPRIM-1
+        GO TO 700      
+       ENDIF 
+       X=0.0D0
+       Y=0.0D0
+       Z=0.0D0
+       DCZ1=DCZ100
+       DCX1=DCX100
+       DCY1=DCY100
+       E1=E100
+       NCLUS=NCLUS+1
+       ST=0.0D0
+       TSSTRT=0.0D0
+       ZSTRT=0.0D0
+       IPLANE=0
+      ENDIF
+      IF(IPRIM.GT.4000000) THEN
+      WRITE(6,944) IPRIM
+ 944  FORMAT(/,2X,'PROGRAM STOPPED TOO MANY PRIMARIES IPRIM =',I7)
+      GO TO 700
+      ENDIF
+      EPRM(IPRIM)=E1
+      IDUM=DINT(E1)+1
+      IDUM=DMIN0(IDUM,N100)
+      IESPECP(IDUM)=IESPECP(IDUM)+1      
+C START OF LOOP FOR NEWLY CREATED ELECTRONS
+  555 TDASH=0.0D0
+      NELEC=NELEC+1
+      TSTOP=TSTEP+IPLANE*TSTEP       
+C MAIN LOOP                                                             
+    1 CONTINUE                                                          
+C     IF(ITER.GT.NMAX)  GO TO 315
+      R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH
+      TDASH=T
+      AP=DCZ1*F2*DSQRT(E1)
+  15  IF((T+ST).GE.TSTOP) THEN                     
+       IPLANE=IPLANE+1
+       TSTOP=TSTOP+TSTEP
+C STORE POSITION AND ENERGY AT TIME PLANE =IPLANE. 
+       CALL TPLANET(T,E1,DCX1,DCY1,DCZ1,AP,BP,EFIELD,IPLANE)
+C CHECK IF PASSED THROUGH MORE THAN ONE PLANE IN THIS STEP       
+       IF((T+ST).GE.TSTOP.AND.TSTOP.LE.TFINAL) GO TO 15
+       IF((T+ST).GE.TFINAL) THEN
+        ZTOT=ZTOT+Z     
+        TTOT=TTOT+ST
+        ZTOTS=ZTOTS+Z-ZSTRT      
+        TTOTS=TTOTS+ST-TSSTRT    
+        TSTOP=TSTEP
+C NO MORE ELECTRONS IN CASCADE TRY NEW PRIMARY ELECTRON
+        IF(NELEC.EQ.(NCLUS+1)) GO TO 544  
+C TAKE ELECTRONS FROM STORE 
+   20   X=XS(NPONT) 
+        Y=YS(NPONT) 
+        Z=ZS(NPONT) 
+        ST=TS(NPONT) 
+        E1=ES(NPONT) 
+        DCX1=DCX(NPONT) 
+        DCY1=DCY(NPONT) 
+        DCZ1=DCZ(NPONT) 
+        IPLANE=IPL(NPONT)   
+        NPONT=NPONT-1 
+        ZSTRT=Z 
+        TSSTRT=ST
+        GO TO 555
+       ENDIF              
+      ENDIF
+ 913  FORMAT(3X,' AFTER STORE ITER=',I10,' E1=',D12.3,' T=',D12.3,' AP='
+     /,D12.3,' BP=',D12.3,' DCZ1=',D12.3)       
+      E=E1+(AP+BP*T)*T
+      IF(E.LT.0.0D0) THEN
+       WRITE(6,913)ITER,E,E1,AP,BP,DCZ1 
+       E=0.001D0
+      ENDIF  
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+   21 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 21 
+C CALC GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ELECTRON VELOCITY VECTORS VEX,VEY,VEZ BEFORE COLLISION
+      CONST6=DSQRT(E1/E)
+      DCX2=DCX1*CONST6
+      DCY2=DCY1*CONST6
+      DCZ2=DCZ1*CONST6+EFIELD*T*CONST5/DSQRT(E)
+      VEX=DCX2*CONST9*DSQRT(E)
+      VEY=DCY2*CONST9*DSQRT(E)
+      VEZ=DCZ2*CONST9*DSQRT(E)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET
+      EOK=((VEX-VGX)**2+(VEY-VGY)**2+(VEZ-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                             
+      IE=DMIN0(IE,N4000)                                              
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                                  
+      TTEM=TCF(KGAS,IE)/TCFMAX(KGAS)                                  
+      IF(R4.LE.TTEM)GO TO 137                                           
+      NNULL=NNULL+1                                                     
+      GO TO 1 
+  137 NCOL=NCOL+1 
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK)) 
+      DXCOM=(VEX-VGX)*CONST11
+      DYCOM=(VEY-VGY)*CONST11
+      DZCOM=(VEZ-VGZ)*CONST11       
+C                                                                       
+C  CALCULATE POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T
+      TDASH=0.0D0                                                       
+      CONST7=CONST9*DSQRT(E1)                                           
+      A=T*CONST7                                                        
+      X=X+DCX1*A                                                        
+      Y=Y+DCY1*A
+      Z=Z+DCZ1*A+T2*F1
+      ST=ST+T
+      IT=DINT(T+1.0D0)                                               
+      IT=DMIN0(IT,N300)                                                
+      TIME(IT)=TIME(IT)+1.0D0
+C ENERGY SPECTRUM FOR 0 KELVIN FRAME                                       
+      SPEC(IE)=SPEC(IE)+1.0D0
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY       
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                
+      S1=RGAS(KGAS,I)                                                 
+      EI=EIN(KGAS,I)
+      IF(EOK.LT.EI) THEN
+       EI=EOK-0.0001D0
+      ENDIF                                                          
+      IF(IPN(KGAS,I).EQ.0) GO TO 666
+C ATTACHMENT       
+      IF(IPN(KGAS,I).EQ.-1) THEN
+       NEION=NEION+1
+       IPT=IARRY(KGAS,I)
+       ID=ID+1
+       ITER=ITER+1
+       IPRINT=IPRINT+1
+       ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+       ICOLN(KGAS,I)=ICOLN(KGAS,I)+1 
+       IT=DINT(T+1.0D0)
+       IT=DMIN0(IT,N300)
+       TIME(IT)=TIME(IT)+1.0D0
+       ZTOT=ZTOT+Z
+       TTOT=TTOT+ST
+       ZTOTS=ZTOTS+Z-ZSTRT
+       TTOTS=TTOTS+ST-TSSTRT
+C  ELECTRON CAPTURED START NEW PRIMARY          
+       IF(NELEC.EQ.(NCLUS+1)) GO TO 544
+C ELECTRON CAPTURED TAKE NEXT ELECTRON FROM STORE       
+       GO TO 20
+      ENDIF                                                 
+      R9=drand48(RDUM)
+C     ESEC=R9*(E-EI)      
+C    USE OPAL PETERSON AND BEATY SPLITTING FACTOR.
+      ESEC=WPL(KGAS,I)*TAN(R9*ATAN((EOK-EI)/(2.0D0*WPL(KGAS,I))))      
+      EI=ESEC+EI 
+C STORE POSITION ,ENERGY, DIRECTION COSINES AND TIME OF GENERATION
+C OF IONISATION ELECTRON      
+      NCLUS=NCLUS+1
+      NPONT=NPONT+1
+      NMXADD=MAX(NPONT,NMXADD)
+      IF(NPONT.GT.200) THEN 
+      WRITE(6,546) NPONT,ITER
+ 546  FORMAT(2X,' PROGRAM STOPPED . NPONT=',I4,' ITER=',I10)
+      STOP
+      ENDIF     
+      XS(NPONT)=X       
+      YS(NPONT)=Y
+      ZS(NPONT)=Z
+      TS(NPONT)=ST
+      ES(NPONT)=ESEC
+C RANDOMISE SECONDARY ELECTRON DIRECTION
+      R3=drand48(RDUM)
+      F3=1.0D0-2.0D0*R3
+      THETA0=DACOS(F3)
+      F6=DCOS(THETA0)
+      F5=DSIN(THETA0)
+      R4=drand48(rdum)
+      PHI0=F4*R4
+      F8=DSIN(PHI0)
+      F9=DCOS(PHI0)               
+      DCX(NPONT)=F9*F5
+      DCY(NPONT)=F8*F5
+      DCZ(NPONT)=F6     
+      IPL(NPONT)=IPLANE 
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C
+  666 IPT=IARRY(KGAS,I)
+      ID=ID+1    
+      ITER=ITER+1
+      IPRINT=IPRINT+1                                                   
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1 
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1 
+C IF EXCITATION THEN ADD PROBABILITY ,PENFRA(KGAS,1,I), OF TRANSFER TO
+C  GIVE IONISATION OF THE OTHER GASES IN THE MIXTURE.
+      IF(IPEN.EQ.0) GO TO 5
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+       NCLUS=NCLUS+1
+       NPONT=NPONT+1
+       IF(NPONT.GT.200) THEN 
+        WRITE(6,546) NPONT,ITER
+        STOP
+       ENDIF
+C ENTER HERE POSSIBLE DELOCALISATION LENGTH FOR PENNING TRANSFER
+       IF(PENFRA(KGAS,2,I).EQ.0.0) THEN
+        XS(NPONT)=X
+        YS(NPONT)=Y
+        ZS(NPONT)=Z
+        GO TO 667
+       ENDIF
+       ASIGN=1.0
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       XS(NPONT)=X-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       YS(NPONT)=Y-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       ZS(NPONT)=Z-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+C POSSIBLE PENNING TRANSFER TIME
+  667  TPEN=ST
+       IF(PENFRA(KGAS,3,I).EQ.0.0) GO TO 668
+       RAN=drand48(RDUM)
+       TPEN=ST-DLOG(RAN)*PENFRA(KGAS,3,I)
+  668  TS(NPONT)=TPEN                 
+       ES(NPONT)=1.0
+       DCX(NPONT)=DCX1
+       DCY(NPONT)=DCY1
+       DCZ(NPONT)=DCZ1
+C FIND LAST TIME PLANE BEFORE TPEN 
+       TSTOP1=0.0
+       IPLANE1=0  
+       DO 669 KDUM=1,ITFINAL
+       TSTOP1=TSTEP+TSTOP1
+       IF(TPEN.LT.TSTOP1) GO TO 670
+       IPLANE1=IPLANE1+1  
+  669  CONTINUE
+C PENNING TRANSFER OCCURS AFTER FINAL TIME PLANE CLEAR ENTRY
+       NPONT=NPONT-1
+       NCLUS=NCLUS-1
+       GO TO 5
+  670  IPL(NPONT)=IPLANE1
+      ENDIF                                            
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C ANISOTROPIC SCATTERING
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING                                              
+       F3=1.0D0-2.0D0*R3  
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      IF(EOK.LT.EI) EI=EOK-0.0001D0                              
+CC    IF(EOK.LT.EI) EI=0.0D0                                     
+      ARG1=1.0D0-S1*EI/EOK                                            
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2) 
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)                                         
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6         
+       DCX1=F9*F5                             
+       DCY1=F8*F5 
+       GO TO 190
+      ENDIF                                            
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8) 
+  190 CONTINUE  
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      CONST12=CONST9*DSQRT(E1)
+      VXLAB=DCX1*CONST12+VGX
+      VYLAB=DCY1*CONST12+VGY
+      VZLAB=DCZ1*CONST12+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(VXLAB*VXLAB+VYLAB*VYLAB+VZLAB*VZLAB)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=VXLAB*CONST11
+      DCY1=VYLAB*CONST11
+      DCZ1=VZLAB*CONST11 
+C STORE DIRECTION COSINES AND ENERGY AFTER N COLLISIONS
+C FOR LATER REUSE IN PRIMARY GENERATION
+      I100=I100+1
+      IF(I100.EQ.200) THEN
+       DCZ100=DCZ1
+       DCX100=DCX1        
+       DCY100=DCY1 
+       E100=E1
+       I100=0
+      ENDIF  
+      IF(IPRINT.GT.JPRINT) GO TO 200
+      GO TO 1                                    
+C    INTERMEDIATE PRINTOUT                       
+ 200  IPRINT=0 
+      W=ZTOTS/TTOTS                          
+      W=W*1.0D+09                                                       
+      JCT=ID/100000
+C     IF(J1.EQ.1) WRITE(6,201)                                         
+C 201 FORMAT(/,7X,'INTERMEDIATE OUTPUT',/,'    VEL      POS        TIME 
+C    /       COUNT    ')                  
+C     WRITE(6,202) W,ZTOTS,TTOTS,JCT   
+C 202 FORMAT(1X,F8.3,2(1X,D10.3),4X,I6)                 
+      J1=J1+1            
+      GO TO 1
+C  MAIN LOOP END                                                  
+  700 XID=DFLOAT(ID)
+      IF(NELEC.GT.IPRIM) THEN
+       ANEION=DFLOAT(NEION)
+       ANBT=DFLOAT(NELEC-IPRIM)
+       ATTOINT=ANEION/ANBT
+       ATTERT=DSQRT(ANEION)/ANEION
+       AIOERT=DSQRT(ANBT)/ANBT
+      ELSE
+       ANEION=DFLOAT(NEION) 
+       ATTOINT=-1.0
+       ATTERT=DSQRT(ANEION)/ANEION
+      ENDIF
+      JCT=ID/100000  
+      IF(J1.EQ.1) THEN
+      WRITE(6,940) NCLUS,ITER
+  940 FORMAT(2(/),' PROGRAM STOPPED  (TOO FEW COLLISIONS), DECREASE THE 
+     /ESTIMATED ALPHA.  NCLUS = ',I7,'  ITER =',I9)      
+      STOP
+      ENDIF
+      WRITE(6,878) NELEC,NEION,IPRIM
+ 878  FORMAT(/,' TOTAL NO OF ELECTRONS=',I10,/,' TOTAL NO OF NEG. IONS='
+     /,I10,/,' TOTAL NO OF PRIMARIES=',I10)  
+      EPRMBAR=0.0D0
+      E2PRM=0.0D0
+      IF(IPRIM.EQ.1) RETURN      
+      DO 310 I=1,IPRIM
+      E2PRM=E2PRM+EPRM(I)*EPRM(I)
+ 310  EPRMBAR=EPRMBAR+EPRM(I)
+      EBAR=EPRMBAR/IPRIM
+      EERR=DSQRT(E2PRM/IPRIM-EBAR**2)
+      WRITE(6,836) EBAR,EERR
+ 836  FORMAT(/,2X,'AVERAGE ENERGY OF PRIMARY ELECTRON =',F10.3,' EV.',/,
+     /'   ENERGY SPREAD OF PRIMARY ELECTRON =',F10.3,' EV.')
+C     WRITE(6,835) (IESPECP(J),J=1,100)
+C835  FORMAT(/,2X,'ENERGY SPECTRUM OF PRIMARY ELECTRONS IN 1 EV. BINS',/
+C    /,10(2X,10I5,/))
+      RETURN               
+  315 IF(ITER.GT.NMAX) THEN
+       WRITE(6,991) ITER,NMAX,NPONT,NELEC,IPRIM,NMXADD
+ 991   FORMAT(2(/),' PROGRAM STOPPED.  ITER =',I10,'    NMAX =',I10,/,
+     /' NPONT=',I4,' NELEC=',I8,' IPRIM=',I4,' NMXADD=',I3)
+       STOP
+      ENDIF                                                             
+      RETURN                                                            
+      END
+      SUBROUTINE TPLANET(T,E1,DCX1,DCY1,DCZ1,AP,BP,EFLD,IPLANE)
+      IMPLICIT REAL*8 (A-H,O-Z)  
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT 
+C-----------------------------------------------------------------------
+C STORES POSITION, TIME AND ENERGY AND SUMS REQUIRED
+C TO CALCULATE DEVIATIONS AND MEANS AT PLANE =IPLANE 
+C-----------------------------------------------------------------------
+      TIMESP=IPLANE*TSTEP
+C CALC TIME LEFT TO ARRIVE AT PLANE
+      TIMLFT=TIMESP-ST
+      T2LFT=TIMLFT*TIMLFT
+      A=AP*TIMLFT
+      B=BP*T2LFT 
+      EPLANE=E1+A+B                      
+      CONST6=DSQRT(E1/EPLANE)         
+C     DCX2=DCX1*CONST6
+C     DCY2=DCY1*CONST6
+      DCZ2=DCZ1*CONST6+EFLD*TIMLFT*CONST5/DSQRT(EPLANE)
+      XPLANE=X+DCX1*TIMLFT*DSQRT(E1)*CONST3*0.01D0
+      YPLANE=Y+DCY1*TIMLFT*DSQRT(E1)*CONST3*0.01D0
+      ZPLANE=Z+DCZ1*TIMLFT*DSQRT(E1)*CONST3*0.01D0+T2LFT*EFLD*CONST2
+      VZPLANE=DCZ2*DSQRT(EPLANE)*CONST3*0.01D0
+      XTPL(IPLANE)=XTPL(IPLANE)+XPLANE
+      YTPL(IPLANE)=YTPL(IPLANE)+YPLANE
+      ZTPL(IPLANE)=ZTPL(IPLANE)+ZPLANE
+      XXTPL(IPLANE)=XXTPL(IPLANE)+XPLANE*XPLANE
+      YYTPL(IPLANE)=YYTPL(IPLANE)+YPLANE*YPLANE
+      ZZTPL(IPLANE)=ZZTPL(IPLANE)+ZPLANE*ZPLANE
+      ETPL(IPLANE)=ETPL(IPLANE)+EPLANE
+      TTPL(IPLANE)=TTPL(IPLANE)+ST+TIMLFT
+      VZTPL(IPLANE)=VZTPL(IPLANE)+VZPLANE
+      NETPL(IPLANE)=NETPL(IPLANE)+1 
+      RETURN
+      END
+      SUBROUTINE FRIEDLANDT
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/FRED/FCION(4000),FCATT(4000)                               
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS 
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000),
+     /QEL(4000) 
+      DIMENSION FR(4000)                                              
+C -------------------------------------------------------
+C CALCULATE DISTRIBUTION FUNCTION USING FRIEDLAND TECHNIQUE
+C CF: J.FRIEDLAND  PHYSICS OF FLUIDS 20(1461)1977
+C  USE DITRIBUTION FUNCTION TO CALCULATE AVERAGE ENERGY
+C  IONISATION RATE AND ATTACHMENT RATE.  
+C-----------------------------------------------------  
+      ALFBAR=0.0D0
+      ATTBAR=0.0D0
+      EBAR=0.0D0
+      FSUM=0.0D0
+      DO 100 I=1,4000
+      TCFSUM=0.0D0
+      DO 10 KGAS=1,NGAS
+   10 TCFSUM=TCFSUM+TCF(KGAS,I)
+      FR(I)=SPEC(I)/TCFSUM
+      EBAR=EBAR+E(I)*SPEC(I)/TCFSUM
+      ALFBAR=ALFBAR+FCION(I)*SPEC(I)/TCFSUM
+      ATTBAR=ATTBAR+FCATT(I)*SPEC(I)/TCFSUM
+  100 FSUM=FSUM+FR(I)
+      DO 200 I=1,4000
+ 200  FR(I)=FR(I)/FSUM
+      EBAR=EBAR/TTOTS
+      ALFBAR=ALFBAR/TTOTS           
+      ATTBAR=ATTBAR/TTOTS
+      WRITE(6,900) EBAR,ALFBAR,ATTBAR    
+ 900  FORMAT(2(/),' ESTIMATE USING FRIEDLAND :',/,' AVERAGE ENERGY =',F8
+     /.3,'EV.',/,' AVERAGE IONISATION =',E11.4,' *10**12/SEC',/,' AVERAG
+     /E ATTACHMENT =',E11.4,' *10**12/SEC') 
+      RETURN   
+      END
+      SUBROUTINE PT
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
+      COMMON/PTTOF/RI(8),EPT(8),VZPT(8),TTEST(8)
+      DIMENSION ANTPL(8)
+C ------------------------------------------------
+C CALCULATES PULSED TOWNSEND COEFFICIENTS
+C-------------------------------------------------
+      ANTPL(1)=DFLOAT(NETPL(1))
+      RI(1)=(DLOG(ANTPL(1))-DLOG(DFLOAT(IPRIM)))/TSTEP
+      EPT(1)=ETPL(1)/ANTPL(1)
+      TTEST(1)=TTPL(1)/ANTPL(1)
+      VZPT(1)=1.0D+09*VZTPL(1)/ANTPL(1)
+      DO 10 I=2,ITFINAL
+      IF(NETPL(I).EQ.0) THEN
+       ITFINAL=I-1
+       GO TO 11
+      ENDIF      
+      ANTPL(I)=DFLOAT(NETPL(I))
+      RI(I)=(DLOG(ANTPL(I))-DLOG(ANTPL(I-1)))/TSTEP
+      EPT(I)=ETPL(I)/ANTPL(I)
+      TTEST(I)=TTPL(I)/ANTPL(I)
+      VZPT(I)=1.0D+09*VZTPL(I)/ANTPL(I)
+  10  CONTINUE
+  11  WRITE(6,900) ITFINAL
+ 900  FORMAT(2(/),' PULSED TOWNSEND RESULTS AT',I2,' SEQUENTIAL TIME PLA
+     /NES',/,' PLANE NO.   (ION-ATT) FREQ.   ENERGY      WV      NO.OF E
+     /LECTRONS',/)   
+      DO 20 IPL=1,ITFINAL
+      WRITE(6,910) IPL,RI(IPL),EPT(IPL),VZPT(IPL),NETPL(IPL)
+ 910  FORMAT(2X,I2,4X,E15.4,7X,F7.2,4X,F7.2,3X,I8)
+  20  CONTINUE 
+      RETURN
+      END
+      SUBROUTINE TOF
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
+      COMMON/TOFOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWV,TOFWVER,
+     /TOFDL,TOFDLER,TOFDT,TOFDTER,TOFWR,TOFWRER,RATTOF,RATOFER 
+      COMMON/PTTOF/RI(8),EPT(8),VZPT(8),TTEST(8)
+      DIMENSION DLTF(8),DXTF(8),DYTF(8),WR(8),ANTPL(8)
+C----------------------------------------------------------
+C CALCULATES TIME OF FLIGHT COEFFICIENTS
+C---------------------------------------------
+      ANTPL(1)=DFLOAT(NETPL(1))
+      WR(1)=ZTPL(1)/(ANTPL(1)*TSTEP)
+      DLTF(1)=((ZZTPL(1)/ANTPL(1))-(ZTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DXTF(1)=((XXTPL(1)/ANTPL(1))-(XTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DYTF(1)=((YYTPL(1)/ANTPL(1))-(YTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DO 10 I=2,ITFINAL
+      ANTPL(I)=DFLOAT(NETPL(I))
+      WR(I)=((ZTPL(I)/ANTPL(I))-(ZTPL(I-1)/ANTPL(I-1)))/TSTEP
+      DLTF(I)=((ZZTPL(I)/ANTPL(I))-(ZTPL(I)/ANTPL(I))**2-(ZZTPL(I-1)/ANT
+     /PL(I-1))+(ZTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DXTF(I)=((XXTPL(I)/ANTPL(I))-(XTPL(I)/ANTPL(I))**2-(XXTPL(I-1)/ANT
+     /PL(I-1))+(XTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DYTF(I)=((YYTPL(I)/ANTPL(I))-(YTPL(I)/ANTPL(I))**2-(YYTPL(I-1)/ANT
+     /PL(I-1))+(YTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+  10  CONTINUE  
+      DO 15 I=1,ITFINAL
+      WR(I)=WR(I)*1.0D+09
+      DLTF(I)=DLTF(I)*1.0D+16
+      DXTF(I)=DXTF(I)*1.0D+16
+      DYTF(I)=DYTF(I)*1.0D+16
+  15  CONTINUE
+      WRITE(6,900) ITFINAL
+ 900  FORMAT(2(/),' TIME OF FLIGHT RESULTS AT',I2,' SEQUENTIAL TIME PLAN
+     /ES',/,' PLANE NO.        DL         DX          DY            WR',
+     //)
+      DO 20 IPL=1,ITFINAL   
+      WRITE(6,910) IPL,DLTF(IPL),DXTF(IPL),DYTF(IPL),WR(IPL)
+ 910  FORMAT(3X,I3,4X,3F12.1,4X,F8.2)
+  20  CONTINUE    
+      IF(NETPL(1).GT.NETPL(ITFINAL)) THEN
+C        NET ATTACHMENT TAKE RESULTS FROM PLANE 2
+       TOFENE=EPT(2)
+       TOFENER=100.0D0*DABS((EPT(2)-EPT(3))/(2.0D0*EPT(2)))
+       TOFWV=VZPT(2)
+       TOFWVER=100.0D0*DABS((VZPT(2)-VZPT(3))/(2.0D0*VZPT(2))) 
+       TOFDL=DLTF(2)
+       TOFDLER=100.0D0*DABS((DLTF(2)-DLTF(3))/(2.0D0*DLTF(2)))
+       TDT2=(DXTF(2)+DYTF(2))/2.0D0
+       TDT3=(DXTF(3)+DYTF(3))/2.0D0
+       TOFDT=TDT2
+       TOFDTER=100.0D0*DABS((TDT2-TDT3)/(2.0D0*TDT2))
+       TOFWR=WR(2)
+       TOFWRER=100.0D0*DABS((WR(2)-WR(3))/(2.0D0*WR(2))) 
+        ANST2=DFLOAT(NETPL(2))
+        ANST3=DFLOAT(NETPL(3))
+        ANST4=ANST3-DSQRT(ANST3)
+        ANST5=DLOG(ANST2/ANST3)
+        ANST6=DLOG(ANST2/ANST4)
+        ANST7=ANST6/ANST5
+        ANST8=ANST7-1.0D0
+       IF(ATTOINT.EQ.-1.0) THEN
+C        NO IONISATION
+        RALPHA=0.0D0
+        RALPER=0.0D0
+        RATTOF=-RI(2)
+        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
+       ELSE
+        RALPHA=RI(2)/(1.0D0-ATTOINT)
+        RALPER=100.0D0*DSQRT(ANST8**2+AIOERT**2)
+        RATTOF=ATTOINT*RI(2)/(1.0D0-ATTOINT)
+        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
+       ENDIF 
+      ELSE
+C NET IONISATION TAKE RESULTS FROM PLANE ITFINAL
+       I1=ITFINAL
+       I2=ITFINAL-1  
+       TOFENE=EPT(I1)
+       TOFENER=100.0D0*DABS((EPT(I1)-EPT(I2))/(2.0D0*EPT(I1)))
+       TOFWV=VZPT(I1)
+       TOFWVER=100.0D0*DABS((VZPT(I1)-VZPT(I2))/(2.0D0*VZPT(I1)))
+       TOFDL=DLTF(I1)
+       TOFDLER=100.0D0*DABS((DLTF(I1)-DLTF(I2))/(2.0D0*DLTF(I1)))
+       TDT1=(DXTF(I1)+DYTF(I1))/2.0D0
+       TDT2=(DXTF(I2)+DYTF(I2))/2.0D0
+       TOFDT=TDT1
+       TOFDTER=100.0D0*DABS((TDT1-TDT2)/(2.0D0*TDT1))
+       TOFWR=WR(I1)
+       TOFWRER=100.0D0*DABS((WR(I1)-WR(I2))/(2.0D0*WR(I1)))
+       ATER=DABS((RI(I1)-RI(I2))/(2.0D0*RI(I1)))
+       RALPHA=RI(I1)/(1.0D0-ATTOINT)
+       RALPER=100.0D0*DSQRT(ATER**2+AIOERT**2)
+       RATTOF=ATTOINT*RI(I1)/(1.0D0-ATTOINT)
+       IF(ATTOINT.NE.0.0D0) THEN
+        RATOFER=100.0D0*DSQRT(ATER**2+ATTERT**2)
+       ELSE
+        RATOFER=0.0D0
+       ENDIF  
+      ENDIF
+      RETURN
+      END               
+      SUBROUTINE MONTEFDT                                               
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS 
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6)
+      COMMON/IPS/XSS(200),YSS(200),ZSS(200),TSS(200),ESS(200),
+     /DCXS(200),DCYS(200),DCZS(200),IPLS(200)  
+      COMMON/SPLOUT/ESPL(8),XSPL(8),YSPL(8),ZSPL(8),TSPL(8),XXSPL(8),
+     /YYSPL(8),ZZSPL(8),VZSPL(8),TSSUM(8),TSSUM2(8),ATTOION,ATTIOER,
+     /ATTATER,NESST(9)
+      COMMON/SPL1/TMSPL(8),TTMSPL(8),RSPL(8),RRSPL(8),RRSPM(8)
+      COMMON/CTCALC/ZPLANE1,ZPLANE2,ZPLANE3,ZPLANE4,ZPLANE5,ZPLANE6,
+     /ZPLANE7,ZPLANE8,IZFINAL
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+      DIMENSION EPRM(4000000),IESPECP(100)
+C----------------------------------------------------------------------
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.
+C   THIS ROUTINE HANDLES TERMINATIONS AT FIXED DRIFT DISTANCES.   
+C -------------------------------------------------------------------  
+      S=0.0D0  
+      ST=0.0D0
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0
+      ZTOT=0.0D0
+      ZTOTS=0.0D0
+      TTOT=0.0D0
+      TTOTS=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9
+      API=DACOS(-1.0D0)
+      DO 25 I=1,300
+   25 TIME(I)=0.0D0
+      DO 26 I=1,5
+      DO 26 K=1,6
+   26 ICOLL(K,I)=0
+      DO 27 I=1,260
+      DO 27 K=1,6
+   27 ICOLN(K,I)=0
+      DO 28 I=1,4000
+   28 SPEC(I)=0.0D0            
+      DO 33 I=1,100
+   33 IESPECP(I)=0  
+      DO 34 I=1,8   
+      ESPL(I)=0.0D0
+      XSPL(I)=0.0D0
+      YSPL(I)=0.0D0
+      ZSPL(I)=0.0D0
+      TSPL(I)=0.0D0
+      XXSPL(I)=0.0D0
+      YYSPL(I)=0.0D0
+      ZZSPL(I)=0.0D0
+      VZSPL(I)=0.0D0
+      TSSUM(I)=0.0D0
+      TSSUM2(I)=0.0D0
+      TMSPL(I)=0.0D0
+      TTMSPL(I)=0.0D0
+      RSPL(I)=0.0D0
+      RRSPL(I)=0.0D0
+      RRSPM(I)=0.0D0
+   34 NESST(I)=0 
+      NESST(9)=0                     
+      ID=0
+      N4000=4000
+      N300=300
+      N100=100
+      I100=0                                                            
+      NCOL=0                                                            
+      NNULL=0
+      NELEC=0        
+      NEION=0
+      NMXADD=0
+      NPONT=0
+      NCLUS=0
+      J1=1                                                       
+      ZSTRT=0.0D0
+      TSSTRT=0.0D0 
+C GENERATE INITIAL RANDOM NUMBERS FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C     INITIAL DIRECTION COSINES                                         
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI) 
+      DCX100=DCX1
+      DCY100=DCY1
+      DCZ100=DCZ1
+      E100=E1                                      
+      BP=EFIELD*EFIELD*CONST1                                           
+      F1=EFIELD*CONST2                                                  
+      F2=EFIELD*CONST3                                                  
+      F4=2.0D0*API
+      JPRINT=NMAX/10
+      IPRINT=0
+      ITER=0
+      IPRIM=0  
+C LOOP FOR NEW STARTING ELECTRONS
+ 544  IPRIM=IPRIM+1
+      IZPLANE=0
+      TZSTOP=1000.0D0
+      IF(IPRIM.GT.1) THEN
+C CHECK IF PROGRAM WILL EXCEED MAXIMUM NUMBER OF ITERATIONS IN THIS
+C CYCLE , IF SO OUTPUT CURRENT RESULTS.
+       IF(ITER.GT.NMAX) THEN
+        IPRIM=IPRIM-1
+        GO TO 700
+       ENDIF 
+       X=0.0D0
+       Y=0.0D0
+       Z=0.0D0
+       DCZ1=DCZ100
+       DCX1=DCX100
+       DCY1=DCY100
+       NCLUS=NCLUS+1
+       E1=E100
+       ST=0.0D0
+       ZSTRT=0.0D0
+       TSSTRT=0.0D0
+      ENDIF
+      IF(IPRIM.GT.4000000) THEN
+      WRITE(6,944) IPRIM
+  944 FORMAT(2X,' PROGRAM STOPPED TOO MANY PRIMARIES IPRIM=',I7)
+      STOP
+      ENDIF
+      EPRM(IPRIM)=E1
+      IDUM=DINT(E1)+1
+      IDUM=DMIN0(IDUM,N100)
+      IESPECP(IDUM)=IESPECP(IDUM)+1    
+C START OF LOOP FOR NEWLY CREATED ELECTRONS .      
+ 555  TDASH=0.0D0
+      NELEC=NELEC+1
+C MAIN LOOP                                                             
+    1 CONTINUE                                                          
+C     IF(ITER.GT.NMAX)  GO TO 315
+      R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH
+      TOLD=TDASH
+      TDASH=T
+      AP=DCZ1*F2*DSQRT(E1)
+   15 IF(T.GE.TZSTOP.AND.TOLD.LT.TZSTOP) THEN 
+      TLFT=TZSTOP                    
+C STORE POSITION AND ENERGY AT Z PLANE = IZPLANE.
+C      IF(IZPLANE.EQ.0) WRITE(6,8876) IZPLANE
+C8876  FORMAT(' IZPLANE=',I5)
+       CALL SPLANET(T,E1,DCX1,DCY1,DCZ1,AP,BP,EFIELD,TLFT,IZPLANE)
+C********************************************************************
+C
+C CHANGE  IF STATEMENT FROM (IZFINAL+1) TO (IZFINAL-1) 
+C FOR ANODE TERMINATION .
+C*********************************************************************
+       IF(IZPLANE.GE.(IZFINAL+1)) THEN  
+  18    ZTOT=ZTOT+Z     
+        TTOT=TTOT+ST
+        ZTOTS=ZTOTS+Z-ZSTRT     
+        TTOTS=TTOTS+ST-TSSTRT
+C NO MORE ELECTRONS IN CASCADE RETURN TO MAIN.
+        IF(NELEC.EQ.(NCLUS+1)) GO TO 544  
+C TAKE ELECTRONS FROM STORE 
+   20   X=XSS(NPONT)
+        Y=YSS(NPONT)
+        Z=ZSS(NPONT)
+        ST=TSS(NPONT)
+        E1=ESS(NPONT)
+        DCX1=DCXS(NPONT)
+        DCY1=DCYS(NPONT)
+        DCZ1=DCZS(NPONT)
+        IZPLANE=IPLS(NPONT)
+        NPONT=NPONT-1
+        ZSTRT=Z
+        TSSTRT=ST
+        IF(Z.GT.ZFINAL) THEN
+C CHECK IF ELECTRON HAS ENOUGH ENERGY TO GO BACK TO FINAL PLANE         
+         EPOT=EFIELD*(Z-ZFINAL)*100.0D0
+         IF(E1.LT.EPOT) THEN
+          NELEC=NELEC+1
+          ISOL=1
+          GO TO 18
+         ENDIF 
+        ENDIF  
+        CALL TCALCT(Z,DCZ1,E1,EFIELD,TZSTOP,TZSTOP1,ISOL,IZPLANE) 
+        IF(TZSTOP.EQ.-99.0D0) THEN
+C CATCH RUNAWAY ELECTRONS AT HIGH FIELD        
+          NELEC=NELEC+1
+          ISOL=1 
+          GO TO 18
+        ENDIF   
+        GO TO 555
+       ENDIF
+C IF TWO SOLUTIONS REPEAT ENTRY FOR SECOND SOLUTION.         
+      IF(ISOL.EQ.2) THEN
+       TZSTOP=TZSTOP1
+       ISOL=1
+       GO TO 15
+      ENDIF                 
+      ENDIF
+      E=E1+(AP+BP*T)*T
+      IF(E.LT.0.0D0) THEN
+       WRITE(6,999) E,E1,AP,BP,T,DCZ1,ITER
+ 999   FORMAT(2X,' WARNING ENERGY LT.0. E=',D12.3,' E1=',D12.3,' AP=',D1
+     /2.3,' BP=',D12.3,' T=',D12.3,/,' DCZ1=',D12.3,' ITER=',I10)     
+       E=0.001D0   
+      ENDIF     
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE DIRECTION COSINES BEFORE COLLISION
+      CONST6=DSQRT(E1/E)
+      DCX2=DCX1*CONST6
+      DCY2=DCY1*CONST6
+      DCZ2=DCZ1*CONST6+EFIELD*T*CONST5/DSQRT(E)
+C CALCULATE ELECTRON VELOCITY VECTORS VEX,VEY,VEZ
+      VTOT=CONST9*DSQRT(E)
+      VEX=DCX2*VTOT
+      VEY=DCY2*VTOT
+      VEZ=DCZ2*VTOT 
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET
+      EOK=((VEX-VGX)**2+(VEY-VGY)**2+(VEZ-VGZ)**2)/CONST10  
+      IE=DINT(EOK/ESTEP)+1                                             
+      IE=DMIN0(IE,N4000)                                              
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                        
+      TTEM=TCF(KGAS,IE)/TCFMAX(KGAS)                                 
+      IF(R4.LE.TTEM)GO TO 137                                           
+      NNULL=NNULL+1                                                     
+      GO TO 1
+  137 NCOL=NCOL+1
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))   
+      DXCOM=(VEX-VGX)*CONST11
+      DYCOM=(VEY-VGY)*CONST11
+      DZCOM=(VEZ-VGZ)*CONST11                             
+C                                                                       
+C  CALCULATE POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T                                            
+      TDASH=0.0D0                                                       
+      A=AP*T                                                            
+      B=BP*T2                                                           
+      CONST7=CONST9*DSQRT(E1)                                           
+      A=T*CONST7                                                        
+      NCOL=NCOL+1                                                       
+      CZ1=DCZ1*CONST7                                                   
+      X=X+DCX1*A                                                        
+      Y=Y+DCY1*A
+      Z=Z+DCZ1*A+T2*F1
+      ST=ST+T
+      IT=DINT(T+1.0D0)                                              
+      IT=DMIN0(IT,N300)                                               
+      TIME(IT)=TIME(IT)+1.0D0                                           
+      CX1=DCX1*CONST7                                                   
+      CY1=DCY1*CONST7  
+C ENERGY SPECTRUM FOR 0 KELVIN FRAME                                
+      SPEC(IE)=SPEC(IE)+1.0D0                                         
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY
+      CALL SORTT(KGAS,I,R2,IE)                                         
+  140 I=I+1
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140
+      S1=RGAS(KGAS,I)                                                  
+      EI=EIN(KGAS,I)
+      IF(EOK.LT.EI) THEN
+C ENERGY LOSS SMALLER THAN INCIDENT ENERGY IF A ROUNDING ERROR OCCURS.
+      EI=EOK-0.0001D0
+      ENDIF                                                         
+      IF(IPN(KGAS,I).EQ.0) GO TO 666
+C ATTACHMENT      
+      IF(IPN(KGAS,I).EQ.-1) THEN
+       NEION=NEION+1
+       IPT=IARRY(KGAS,I)
+       ID=ID+1
+       ITER=ITER+1
+       IPRINT=IPRINT+1
+       ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+       ICOLN(KGAS,I)=ICOLN(KGAS,I)+1
+       IT=DINT(T+1.0D0)
+       IT=DMIN0(IT,N300)
+       TIME(IT)=TIME(IT)+1.0D0
+       ZTOT=ZTOT+Z
+       TTOT=TTOT+ST
+       ZTOTS=ZTOTS+Z-ZSTRT
+       TTOTS=TTOTS+ST-TSSTRT
+       IDM1=1+DINT(Z/ZSTEP)
+       IF(IDM1.LT.1) IDM1=1
+       IF(IDM1.GT.9) IDM1=9
+       NESST(IDM1)=NESST(IDM1)-1
+C ELECTRON CAPTURED START NEW PRIMARY 
+       IF(NELEC.EQ.(NCLUS+1)) GO TO 544      
+C ELECTRON CAPTURED TAKE NEXT ELECTRON FROM STORE       
+       GO TO 20
+      ENDIF                                                 
+      R9=drand48(RDUM)
+C     ESEC=R9*(EOK-EI) 
+C  USE OPAL PETERSON AND BEATY SPLITTING FACTOR.
+      ESEC=WPL(KGAS,I)*TAN(R9*ATAN((EOK-EI)/(2.0D0*WPL(KGAS,I))))  
+C RESCALE ESEC BY WPL(KGAS,I)*(ESEC/(WPL(KGAS,I))**0.9524
+      ESEC=WPL(KGAS,I)*(ESEC/WPL(KGAS,I))**0.9524                 
+      EI=ESEC+EI 
+C STORE POSITION ,ENERGY, DIRECTION COSINES AND TIME OF GENERATION
+C OF IONISATION ELECTRON      
+      NCLUS=NCLUS+1
+      NPONT=NPONT+1
+      NMXADD=MAX(NPONT,NMXADD) 
+      IF(NPONT.GT.200) THEN
+      WRITE(6,546) NPONT,ITER
+ 546  FORMAT(2X,' PROGRAM STOPPED NPONT=',I3,' ITER=',I10)
+      STOP
+      ENDIF     
+      XSS(NPONT)=X        
+      YSS(NPONT)=Y
+      ZSS(NPONT)=Z
+      TSS(NPONT)=ST
+      ESS(NPONT)=ESEC
+C RANDOMISE SECONDARY ELECTRON DIRECTION
+      R3=drand48(RDUM)
+      F3=1.0D0-2.0D0*R3
+      THETA0=DACOS(F3)
+      F6=DCOS(THETA0)
+      F5=DSIN(THETA0)
+      R4=drand48(RDUM)
+      PHI0=F4*R4
+      F8=DSIN(PHI0)
+      F9=DCOS(PHI0)               
+      DCXS(NPONT)=F9*F5
+      DCYS(NPONT)=F8*F5
+      DCZS(NPONT)=F6
+      IDM1=1+DINT(Z/ZSTEP)
+      IF(IDM1.LT.1) IDM1=1
+      IF(IDM1.GT.9) IDM1=9     
+      IPLS(NPONT)=IDM1 
+      NESST(IPLS(NPONT))=NESST(IPLS(NPONT))+1
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C                                                                       
+  666 IPT=IARRY(KGAS,I)
+      ID=ID+1
+      ITER=ITER+1
+      IPRINT=IPRINT+1
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1
+C IF EXCITATION THEN ADD PROBABILITY,PENFRA(1,I), OF TRANSFER TO GIVE
+C IONISATION OF THE OTHER GASES IN THE MIXTURE.
+      IF(IPEN.EQ.0) GO TO 5 
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+       NCLUS=NCLUS+1
+       NPONT=NPONT+1
+       IF(NPONT.GT.200) THEN
+        WRITE(6,546) NPONT,ITER
+        STOP
+       ENDIF 
+C ENTER HERE POSSIBLE DELOCALISATION LENGTH FOR PENNING TRANSFER
+       IF(PENFRA(KGAS,2,I).EQ.0.0) THEN
+        XSS(NPONT)=X
+        YSS(NPONT)=Y
+        ZSS(NPONT)=Z
+        IF(ZSS(NPONT).GT.ZFINAL.OR.ZSS(NPONT).LT.0.0) GO TO 669
+        GO TO 667
+       ENDIF
+       ASIGN=1.0
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       XSS(NPONT)=X-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       YSS(NPONT)=Y-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       ZSS(NPONT)=Z-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       IF(ZSS(NPONT).LT.0.0) GO TO 669
+       IF(ZSS(NPONT).GT.ZFINAL.OR.ZSS(NPONT).LT.0.0) GO TO 669
+  667  TPEN=ST
+       IF(PENFRA(KGAS,3,I).EQ.0.) GO TO 668 
+       RAN=drand48(RDUM)
+       TPEN=ST-DLOG(RAN)*PENFRA(KGAS,3,I)
+  668  TSS(NPONT)=TPEN
+       ESS(NPONT)=1.0
+       DCXS(NPONT)=DCX1 
+       DCYS(NPONT)=DCY1 
+       DCZS(NPONT)=DCZ1
+C FIND LAST PLANE BEFORE ZSS(NPONT)
+       IDM1=1+DINT(ZSS(NPONT)/ZSTEP)
+       IF(IDM1.LT.1) IDM1=1
+       IF(IDM1.GT.9) IDM1=9
+       IPLS(NPONT)=IDM1
+       NESST(IPLS(NPONT))=NESST(IPLS(NPONT))+1
+       GO TO 5  
+C     PENNING TRANSFER OCCURS BEFORE FIRST SPACE PLANE CLEAR ENTRY
+  669  NPONT=NPONT-1
+       NCLUS=NCLUS-1
+      ENDIF
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C ANISOTROPIC SCATTERING
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING
+       F3=1.0D0-2.0D0*R3 
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+      IF(EOK.LT.EI) EI=0.0D0                                           
+      ARG1=1.0D0-S1*EI/EOK                                             
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2)                            
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)                                        
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)  
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6        
+       DCX1=F9*F5                       
+       DCY1=F8*F5  
+       GO TO 190
+      ENDIF                                                   
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8)
+ 190  CONTINUE
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      CONST12=CONST9*DSQRT(E1)
+      VXLAB=DCX1*CONST12+VGX
+      VYLAB=DCY1*CONST12+VGY
+      VZLAB=DCZ1*CONST12+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(VXLAB*VXLAB+VYLAB*VYLAB+VZLAB*VZLAB)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=VXLAB*CONST11
+      DCY1=VYLAB*CONST11
+      DCZ1=VZLAB*CONST11
+C STORE DIRECTION COSINES AND ENERGY AFTER N COLLISIONS
+C FOR LATER REUSE IN PRIMARY GENERATION.
+      I100=I100+1
+      IF(I100.EQ.200) THEN
+       DCZ100=DCZ1
+       DCX100=DCX1                            
+       DCY100=DCY1 
+       E100=E1
+       I100=0
+      ENDIF 
+      IF(Z.GT.ZFINAL) THEN
+C CHECK IF ELECTRON HAS ENOUGH ENERGY TO GO BACK TO FINAL PLANE.
+       EPOT=EFIELD*(Z-ZFINAL)*100.0D0
+       IF(E1.LT.EPOT) GO TO 18
+      ENDIF    
+C CALCULATE TIME TZSTOP TO ARRIVE AT NEXT Z PLANE IZPLANE.
+      CALL TCALCT(Z,DCZ1,E1,EFIELD,TZSTOP,TZSTOP1,ISOL,IZPLANE)
+C CATCH RUNAWAY ELECTRONS AT HIGH FIELD       
+      IF(TZSTOP.EQ.-99.0D0) GO TO 18
+      IF(IPRINT.GT.JPRINT) GO TO 200
+      GO TO 1                                    
+C    INTERMEDIATE PRINTOUT                       
+ 200  IPRINT=0
+      W=ZTOTS/TTOTS                          
+      W=W*1.0D+09                                                       
+      XID=DFLOAT(ID)
+      JCT=ID/100000
+C     IF(J1.EQ.1) WRITE(6,201)                                         
+C 201 FORMAT(/,7X,'INTERMEDIATE OUTPUT',/,'    VEL       POS       TIME 
+C    /     COUNT')                  
+C     WRITE(6,202) W,ZTOTS,TTOTS,JCT     
+C 202 FORMAT(1X,F8.3,2(1X,D10.3),1X,I6)    
+      J1=J1+1            
+      GO TO 1
+C  MAIN LOOP END          
+  700 XID=DFLOAT(ID)
+      IF(NELEC.GT.IPRIM) THEN 
+       ANEION=DFLOAT(NEION)
+       ANBT=DFLOAT(NELEC-IPRIM)
+       ATTOION=ANEION/ANBT 
+       ATTATER=DSQRT(ANEION)/ANEION 
+       ATTIOER=DSQRT(ANBT)/ANBT                  
+      ELSE
+       ATTOION=-1.0D0
+       ANEION=DFLOAT(NEION)
+       ATTATER=DSQRT(ANEION)/ANEION
+      ENDIF 
+      JCT=ID/10000
+      IF(J1.EQ.1) THEN
+      WRITE(6,940) NCLUS,ITER,NELEC,NEION
+  940 FORMAT(2(/),' PROGRAM STOPPED (TOO FEW COLLISIONS), DECREASE THE
+     /ESTIMATED ALPHA.  NCLUS=',I7,'  ITER =',I9,' NELEC=',I9,' NEION ='
+     /,I6)   
+      ENDIF
+      WRITE(6,878) NELEC,NEION,IPRIM
+ 878  FORMAT(/,' TOTAL NO OF ELECTRONS=',I10,/,' TOTAL NO OF NEG. IONS='
+     /,I10,/,' TOTAL NO OF PRIMARIES=',I10)  
+      EPRMBAR=0.0D0
+      E2PRM=0.0D0
+      IF(IPRIM.EQ.1) RETURN     
+      DO 310 I=1,IPRIM
+      E2PRM=E2PRM+EPRM(I)*EPRM(I)
+  310 EPRMBAR=EPRMBAR+EPRM(I) 
+      EBAR=EPRMBAR/IPRIM 
+      EERR=DSQRT(E2PRM/IPRIM-EBAR**2)
+      WRITE(6,836) EBAR,EERR
+  836 FORMAT(/,2X,'AVERAGE ENERGY OF PRIMARY ELECTRON =',F10.3,' EV.',/,
+     /'   ENERGY SPREAD OF PRIMARY ELECTRON =',F10.3,' EV.')
+C     WRITE(6,837) (IESPECP(J),J=1,100)
+C 837 FORMAT(/,2X,'ENERGY SPECTRUM OF PRIMARIES IN 1EV BINS',/,10(2X,10I
+C    /5,/))
+      RETURN    
+  315 IF(ITER.GT.NMAX) THEN
+       WRITE(6,991) ITER,NMAX,NPONT,NELEC,IPRIM,NMXADD
+ 991   FORMAT(2(/),' PROGRAM STOPPED.  ITER =',I10,'    NMAX =',I10,/,
+     /' NPONT=',I4,' NELEC=',I8,' IPRIM=',I6,' NMXADD=',I3) 
+       STOP
+      ENDIF                                                             
+      RETURN                                                            
+      END
+      SUBROUTINE SPLANET(T,E1,DCX1,DCY1,DCZ1,AP,BP,EFLD,TIMLFT,IZPLANE)
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260) 
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/SPLOUT/ESPL(8),XSPL(8),YSPL(8),ZSPL(8),TSPL(8),XXSPL(8),
+     /YYSPL(8),ZZSPL(8),VZSPL(8),TSSUM(8),TSSUM2(8),ATTOION,ATTIOER,
+     /ATTATER,NESST(9)
+      COMMON/SPL1/TMSPL(8),TTMSPL(8),RSPL(8),RRSPL(8),RRSPM(8)
+C--------------------------------------------------------
+C STORES POSITION, TIME AND ENERGY AND SUMS REQUIRED
+C TO CALCULATE DEVIATIONS AND MEANS AT PLANE =IZPLANE   
+C---------------------------------------------------- 
+      IF(IZPLANE.GT.8) RETURN
+      T2LFT=TIMLFT*TIMLFT
+      A=AP*TIMLFT
+      B=BP*T2LFT 
+      EPLANE=E1+A+B                      
+      CONST6=DSQRT(E1/EPLANE)         
+C     DCX2=DCX1*CONST6
+C     DCY2=DCY1*CONST6
+      DCZ2=DCZ1*CONST6+EFLD*TIMLFT*CONST5/DSQRT(EPLANE)
+      XPLANE=X+DCX1*TIMLFT*DSQRT(E1)*CONST3*0.01D0
+      YPLANE=Y+DCY1*TIMLFT*DSQRT(E1)*CONST3*0.01D0
+      ZPLANE=Z+DCZ1*TIMLFT*DSQRT(E1)*CONST3*0.01D0+T2LFT*EFLD*CONST2
+      VZPLANE=DCZ2*DSQRT(EPLANE)*CONST3*0.01D0
+      WGHT=DABS(1.0D0/VZPLANE)
+      RPLANE=DSQRT(XPLANE**2+YPLANE**2)
+      XSPL(IZPLANE)=XSPL(IZPLANE)+XPLANE*WGHT
+      YSPL(IZPLANE)=YSPL(IZPLANE)+YPLANE*WGHT
+      RSPL(IZPLANE)=RSPL(IZPLANE)+RPLANE*WGHT
+      ZSPL(IZPLANE)=ZSPL(IZPLANE)+ZPLANE*WGHT
+      TMSPL(IZPLANE)=TMSPL(IZPLANE)+(ST+TIMLFT)*WGHT
+      TTMSPL(IZPLANE)=TTMSPL(IZPLANE)+(ST+TIMLFT)*(ST+TIMLFT)*WGHT
+      XXSPL(IZPLANE)=XXSPL(IZPLANE)+XPLANE*XPLANE*WGHT 
+      YYSPL(IZPLANE)=YYSPL(IZPLANE)+YPLANE*YPLANE*WGHT
+      RRSPM(IZPLANE)=RRSPM(IZPLANE)+RPLANE*RPLANE*WGHT
+      ZZSPL(IZPLANE)=ZZSPL(IZPLANE)+ZPLANE*ZPLANE*WGHT 
+      ESPL(IZPLANE)=ESPL(IZPLANE)+EPLANE*WGHT
+      TSPL(IZPLANE)=TSPL(IZPLANE)+WGHT/(ST+TIMLFT)
+      VZSPL(IZPLANE)=VZSPL(IZPLANE)+VZPLANE*WGHT
+      TSSUM(IZPLANE)=TSSUM(IZPLANE)+WGHT
+      TSSUM2(IZPLANE)=TSSUM2(IZPLANE)+WGHT*WGHT
+      RETURN
+      END
+      SUBROUTINE TCALCT(Z,DCZ1,E1,EFIELD,TZSTOP1,TZSTOP2,ISOL,IZPLANE) 
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/CTCALC/ZPLANE1,ZPLANE2,ZPLANE3,ZPLANE4,ZPLANE5,ZPLANE6,
+     /ZPLANE7,ZPLANE8,IZFINAL 
+C----------------------------------------------------------------------
+C CALCULATE ELAPSED TIME ,TZSTOP1, UNTIL ARRIVAL AT NEXT PLANE ,IZPLANE.
+C IF TWO POSITIVE SOLUTIONS SET ISOL=2 AND CALCULATE SECOND SOLUTION 
+C  TZSTOP2.
+C-----------------------------------------------------------------------
+      ISOL=1
+      A=EFIELD*CONST2
+      B=DSQRT(E1)*CONST3*0.01D0*DCZ1
+      B2=B*B
+      IF(Z.LT.ZPLANE1) THEN
+       IZPLANE=1
+       C1=Z-ZPLANE1
+       ELSE IF(Z.LT.ZPLANE2) THEN
+       IZPLANE=2
+       C1=Z-ZPLANE2
+       C2=Z-ZPLANE1
+       ELSE IF(Z.LT.ZPLANE3) THEN
+       IZPLANE=3
+       C1=Z-ZPLANE3
+       C2=Z-ZPLANE2
+       ELSE IF(Z.LT.ZPLANE4) THEN
+       IZPLANE=4
+       C1=Z-ZPLANE4
+       C2=Z-ZPLANE3
+       ELSE IF(Z.LT.ZPLANE5) THEN
+       IZPLANE=5
+       C1=Z-ZPLANE5
+       C2=Z-ZPLANE4
+       ELSE IF(Z.LT.ZPLANE6) THEN
+       IZPLANE=6
+       C1=Z-ZPLANE6
+       C2=Z-ZPLANE5
+       ELSE IF(Z.LT.ZPLANE7) THEN
+       IZPLANE=7
+       C1=Z-ZPLANE7
+       C2=Z-ZPLANE6
+       ELSE IF(Z.LT.ZPLANE8) THEN 
+       IZPLANE=8
+       C1=Z-ZPLANE8
+       C2=Z-ZPLANE7
+       ELSE                                 
+       IZPLANE=9
+       C1=Z-ZPLANE8-10.0D0*ZSTEP
+       C2=Z-ZPLANE8
+       ENDIF   
+C CHECK PLANE IN DRIFT DIRECTION ( ONLY ONE TIME SOLUTION POSITIVE) 
+      FAC=B2-4.0D0*A*C1
+      IF(FAC.LT.0.0D0) THEN
+C PASSED FINAL PLANE  (RUNAWAY ELECTRONS)      
+       TZSTOP1=-99.0D0
+       RETURN
+      ENDIF      
+      TSTOP1=(-B+DSQRT(B2-4.0D0*A*C1))/(2.0D0*A)
+      TSTOP2=(-B-DSQRT(B2-4.0D0*A*C1))/(2.0D0*A)
+      IF(TSTOP1.LT.TSTOP2) THEN
+       IF(TSTOP1.GE.0.0D0)THEN
+        TZSTOP1=TSTOP1
+       ELSE
+        TZSTOP1=TSTOP2
+       ENDIF
+       IF(IZPLANE.EQ.1) RETURN 
+      ELSE     
+       IF(TSTOP2.GE.0.0D0) THEN   
+        TZSTOP1=TSTOP2
+       ELSE
+        TZSTOP1=TSTOP1
+       ENDIF               
+       IF(IZPLANE.EQ.1) RETURN
+      ENDIF
+C CHECK PLANE IN BACKWARD DIRECTION (ONLY IF REAL SOLUTION)
+      FAC=B2-4.0D0*A*C2
+      IF(FAC.LT.0.0D0) RETURN
+      TSTOP1=(-B+DSQRT(FAC))/(2.0D0*A)                         
+      TSTOP2=(-B-DSQRT(FAC))/(2.0D0*A)
+C SOLUTIONS CAN BE EITHER BOTH POSITIVE OR BOTH NEGATIVE
+C PICK POSITIVE SOLUTIONS AND ORDER IN TIME SEQUENCE OR
+C  RETURN IF NEGATIVE
+      IF(TSTOP1.LT.0.0D0) RETURN
+C  FOUND BACKWARD SOLUTIONS
+      ISOL=2 
+      IZPLANE=IZPLANE-1          
+      IF(TSTOP1.LT.TSTOP2) THEN
+       TZSTOP1=TSTOP1
+       TZSTOP2=TSTOP2          
+      ELSE            
+       TZSTOP1=TSTOP2
+       TZSTOP2=TSTOP1 
+      ENDIF   
+      RETURN
+      END
+      SUBROUTINE SST 
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/SPLOUT/ESPL(8),XSPL(8),YSPL(8),ZSPL(8),TSPL(8),XXSPL(8),
+     /YYSPL(8),ZZSPL(8),VZSPL(8),TSSUM(8),TSSUM2(8),ATTOION,ATTIOER,
+     /ATTATER,NESST(9)
+      COMMON/SPL1/TMSPL(8),TTMSPL(8),RSPL(8),RRSPL(8),RRSPM(8)
+      COMMON/CTCALC/ZPLANE1,ZPLANE2,ZPLANE3,ZPLANE4,ZPLANE5,ZPLANE6,
+     /ZPLANE7,ZPLANE8,IZFINAL
+      COMMON/SSTOUT/VDOUT,VDERR,WSOUT,WSERR,DLOUT,DLERR,DTOUT,DTERR,
+     /ALPHSST,ALPHERR,ATTSST,ATTERR         
+      DIMENSION ESST(8),VDSST(8),WSSST(8),DXSST(8),DYSST(8),WTEMP(8)
+      DIMENSION DRSST(8)
+      DIMENSION ALFNE(8),ALFNJ(8),ALFN(8),ZSST(8),DLSST(8)          
+      DIMENSION DRSS1(8),DRSS2(8),DRSS3(8),ALFEX1(8),NEPL(8)
+C----------------------------------------------------------------------
+C CALCULATES STEADY STATE TOWNSEND COEFFICIENTS.
+C LOADS REULTS AND ERRORS INTO COMMON BLOCKS /SSTOUT/
+C -------------------------------------------------------------------
+      VDOUT=0.0D0
+      VDERR=0.0D0
+      WSOUT=0.0D0
+      WSERR=0.0D0
+      DLOUT=0.0D0
+      DLERR=0.0D0
+      DTOUT=0.0D0
+      DTERR=0.0D0
+      ALPHSST=0.0D0
+      ALPHERR=0.0D0
+      ATTSST=0.0D0
+      ATTERR=0.0D0
+      JPRINT=IZFINAL
+C CALCULATE NUMBER OF ELECTRONS AT EACH PLANE
+      NEPL(1)=IPRIM+NESST(1)
+      DO 21 K=2,JPRINT
+      NEPL(K)=NEPL(K-1)+NESST(K)
+  21  CONTINUE   
+C  SUBSTITUTE NEPL FOR NEEST
+      DO 22 K=1,JPRINT
+  22  NESST(K)=NEPL(K)
+      DO 23 I=1,JPRINT
+      IF(NESST(I).EQ.0) THEN
+       JPRINT=I-1
+       GO TO 24
+      ENDIF 
+  23  CONTINUE
+  24  ESST(1)=ESPL(1)/TSSUM(1)
+      ZSST(1)=ZSPL(1)/TSSUM(1)
+      VDSST(1)=VZSPL(1)/TSSUM(1)
+      WTEMP(1)=ZSTEP*TSSUM(1)/TMSPL(1)
+      WSSST(1)=WTEMP(1)
+      DXSST(1)=((XXSPL(1)/TSSUM(1))-(XSPL(1)/TSSUM(1))**2)*WSSST(1)/
+     /(2.0D0*ZSTEP)
+      DYSST(1)=((YYSPL(1)/TSSUM(1))-(YSPL(1)/TSSUM(1))**2)*WSSST(1)/
+     /(2.0D0*ZSTEP)    
+      DLSST(1)=((TTMSPL(1)/TSSUM(1))-(TMSPL(1)/TSSUM(1))**2)*WSSST(1)**3
+     //(2.0D0*ZSTEP)
+      IF(NESST(1).EQ.0) GO TO 1 
+      ALFNE(1)=(DLOG(DFLOAT(NESST(1)))-DLOG(DFLOAT(IPRIM)))/ZSTEP
+    1 ALFNJ(1)=0.0D0
+      ALFN(1)=0.0D0 
+      DO 10 I=2,JPRINT 
+      ESST(I)=ESPL(I)/TSSUM(I)
+      ZSST(I)=ZSPL(I)/TSSUM(I)
+      VDSST(I)=VZSPL(I)/TSSUM(I)
+      WTEMP(I)=ZSTEP*DFLOAT(I)*TSSUM(I)/TMSPL(I)
+      WSSST(I)=(WTEMP(I)*WTEMP(I-1))/(I*WTEMP(I-1)-(I-1)*WTEMP(I))
+      DXSST(I)=((XXSPL(I)/TSSUM(I))-(XSPL(I)/TSSUM(I))**2-(XXSPL(I-1)/
+     /TSSUM(I-1))+(XSPL(I-1)/TSSUM(I-1))**2)*WSSST(I)/(2.0D0*ZSTEP)
+      DYSST(I)=((YYSPL(I)/TSSUM(I))-(YSPL(I)/TSSUM(I))**2-(YYSPL(I-1)/
+     /TSSUM(I-1))+(YSPL(I-1)/TSSUM(I-1))**2)*WSSST(I)/(2.0D0*ZSTEP)
+      DLSST(I)=((TTMSPL(I)/TSSUM(I))-(TMSPL(I)/TSSUM(I))**2-(TTMSPL(I-1)
+     //TSSUM(I-1))+(TMSPL(I-1)/TSSUM(I-1))**2)*WSSST(I)**3/(2.0D0*ZSTEP)
+      ALFN(I)=(DLOG(TSSUM(I))-DLOG(TSSUM(I-1)))/ZSTEP
+      ALFNJ(I)=(DLOG(TSSUM(I)*VDSST(I))-DLOG(TSSUM(I-1)*VDSST(I-1)))/ZST
+     /EP
+      IF(NESST(I).EQ.0.OR.NESST(I-1).EQ.0) GO TO 10
+   10 ALFNE(I)=(DLOG(DFLOAT(NESST(I)))-DLOG(DFLOAT(NESST(I-1))))/ZSTEP
+      DXFIN=((XXSPL(JPRINT)/TSSUM(JPRINT))-(XSPL(JPRINT)/TSSUM(JPRINT))
+     /**2)*WSSST(JPRINT)/(JPRINT*2.0D0*ZSTEP)
+      DXFIN=DXFIN*1.0D+16 
+      DYFIN=((YYSPL(JPRINT)/TSSUM(JPRINT))-(YSPL(JPRINT)/TSSUM(JPRINT))
+     /**2)*WSSST(JPRINT)/(JPRINT*2.0D0*ZSTEP)
+      DYFIN=DYFIN*1.0D+16
+      DLFIN=((TTMSPL(JPRINT)/TSSUM(JPRINT))-(TMSPL(JPRINT)/TSSUM(JPRINT)
+     /)**2)*WSSST(JPRINT)**3/(JPRINT*2.0D0*ZSTEP)
+      DLFIN=DLFIN*1.0D+16
+      ALNGTH=ZSTEP*DFLOAT(JPRINT)
+      ALFIN=DLOG(DFLOAT(NESST(JPRINT))/DFLOAT(IPRIM))/ALNGTH
+      ALFIN=ALFIN*0.01D0
+      DO 15 J=1,JPRINT       
+      VDSST(J)=VDSST(J)*1.0D+09
+      WSSST(J)=WSSST(J)*1.0D+09
+      DXSST(J)=DXSST(J)*1.0D+16  
+      DYSST(J)=DYSST(J)*1.0D+16
+      DLSST(J)=DLSST(J)*1.0D+16
+      ALFN(J)=ALFN(J)*0.01D0 
+      ALFNJ(J)=ALFNJ(J)*0.01D0 
+      ALFNE(J)=ALFNE(J)*0.01D0
+  15  CONTINUE
+      WRITE(6,800) JPRINT     
+ 800  FORMAT(2(/),' STEADY STATE TOWNSEND RESULTS FOR',I2,' SEQUENTIAL S
+     /PACE PLANES',2(/),'PLANE   NEL     VD      WS     DL       DT    
+     /EBAR   ALFN    ALFNJ   ALFNE',/)  
+      DO 20 IPL=1,JPRINT  
+      DRSST(IPL)=(DXSST(IPL)+DYSST(IPL))/2.0    
+  20  WRITE(6,810)IPL,NESST(IPL),VDSST(IPL),WSSST(IPL),DLSST(IPL),DRSST(
+     /IPL),ESST(IPL),ALFN(IPL),ALFNJ(IPL),ALFNE(IPL)
+ 810  FORMAT(1X,I2,2X,I7,2(1X,F6.1),2F9.1,F6.1,3F8.1)
+      IF(NESST(1).GT.NESST(5)) THEN
+C NET ATTACHMENT THEREFORE TAKE RESULTS FROM PLANE 2
+       VDOUT=VDSST(2)
+       VDERR=100.0D0*DABS((VDSST(2)-VDSST(3))/(2.0D0*VDSST(2)))
+       WSOUT=WSSST(2)
+       WSERR=100.0D0*DABS((WSSST(2)-WSSST(3))/(2.0D0*WSSST(2)))
+       DLOUT=DLSST(2)
+       DLERR=100.0D0*DABS((DLSST(2)-DLSST(3))/(2.0D0*DLSST(2)))
+       DTOUT=DRSST(2)
+       DTERR=100.0D0*DABS((DRSST(2)-DRSST(3))/(2.0D0*DRSST(2)))
+       IF(ATTOION.EQ.-1.0D0) THEN
+C NO IONISATION       
+        ALPHSST=0.0
+        ALPHERR=0.0
+        ANST2=DFLOAT(NESST(2))
+        ANST3=DFLOAT(NESST(3))
+        ANST4=ANST3-DSQRT(ANST3)
+        ANST5=DLOG(ANST2/ANST3)
+        ANST6=DLOG(ANST2/ANST4)
+        ANST7=ANST6/ANST5
+        ANST8=ANST7-1.0D0
+        ATTSST=-(ALFN(2)+ALFNJ(2)+ALFNE(2))/3.0D0
+        ATTERR=100.0D0*DSQRT(ANST8**2+ATTATER**2)         
+       ELSE
+        ANST2=DFLOAT(NESST(2))
+        ANST3=DFLOAT(NESST(3))
+        ANST4=ANST3-DSQRT(ANST3)
+        ANST5=DLOG(ANST2/ANST3)
+        ANST6=DLOG(ANST2/ANST4)
+        ANST7=ANST6/ANST5
+        ANST8=ANST7-1.0D0
+        ATMP=(ALFN(2)+ALFNJ(2)+ALFNE(2))/3.0D0
+        ALPHSST=ATMP/(1.0D0-ATTOION)
+        ALPHERR=100.0D0*DSQRT(ANST8**2+ATTIOER**2)
+        ATTSST=ATTOION*ATMP/(1.0D0-ATTOION)
+        ATTERR=100.0D0*DSQRT(ANST8**2+ATTATER**2)
+       ENDIF
+      ELSE 
+C NET IONISATION THEREFORE TAKE RESULTS FROM PLANE 8
+       VDOUT=VDSST(8)
+       VDERR=100.0D0*DABS((VDSST(8)-VDSST(7))/(2.0D0*VDSST(8)))
+       WSOUT=WSSST(8)
+       WSERR=100.0D0*DABS((WSSST(8)-WSSST(7))/(2.0D0*WSSST(8)))
+       DLOUT=DLFIN   
+       DLERR=100.0D0*DABS((DLOUT-DLSST(8))/(2.0D0*DLOUT))
+       DTOUT=(DXFIN+DYFIN)/2.0D0
+       DTERR=100.0D0*DABS((DTOUT-DRSST(8))/(2.0D0*DTOUT))
+       ATMP=(ALFN(8)+ALFNJ(8)+ALFNE(8))/3.0D0
+       ATMP2=(ALFN(7)+ALFNJ(7)+ALFNE(7))/3.0D0
+       ATER=DABS((ATMP-ATMP2)/(2.0D0*ATMP)) 
+       ALPHSST=ATMP/(1.0D0-ATTOION)
+       ALPHERR=100.0D0*DSQRT(ATER**2+ATTIOER**2)
+       ATTSST=ATTOION*ATMP/(1.0D0-ATTOION)
+       IF(ATTOION.NE.0.0D0) THEN
+        ATTERR=100.0D0*DSQRT(ATER**2+ATTATER**2)
+       ELSE
+        ATTERR=0.0D0
+       ENDIF 
+      ENDIF 
+      RETURN
+      END
+      SUBROUTINE OUTPUT2T
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000),
+     /QEL(4000)                                                         
+      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(250,4000),    
+     /QIN2(250,4000),QIN3(250,4000),QIN4(250,4000),QIN5(250,4000),
+     /QIN6(250,4000),QSATT(4000)             
+      COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)                   
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),LAST(6),ISIZE(6),PENFRA(6,3,260)
+     /,TCFMAX(6)
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS 
+      COMMON/SINT/SIMF(4000)                                            
+      COMMON/NAMES/NAMEG(6)
+      COMMON/SCRIPT/DSCRPT(6,260)
+      CHARACTER*50 DSCRPT               
+      CHARACTER*25 NAMEG  
+      DIMENSION FREQEL(6),FREQSP(6),FREINE(6),FREATT(6),FREION(6)       
+      DIMENSION SPECS(40)  
+      WRITE(6,15)                                                       
+      WRITE(6,15)                                                       
+   15 FORMAT('----------------------------------------------------------
+     /-------------------')
+      WRITE(6,110) SPEC(4000)
+ 110  FORMAT(2(/),' NUMBER OF COLLISIONS IN FINAL ENERGY BIN =',F8.1)
+      NINEL=0
+      NELA=0
+      DO 20 J=1,NGAS   
+      NINEL=NINEL+ICOLL(J,2)+ICOLL(J,3)+ICOLL(J,4)+ICOLL(J,5) 
+   20 NELA=NELA+ICOLL(J,1)
+      NTOTAL=NELA+NINEL
+      IF(TTOTS.EQ.0.0D0) THEN
+       NREAL=NTOTAL
+       TTOTS=ST
+      ELSE
+       NREAL=NTOTAL           
+      ENDIF                       
+      FREQ=NREAL/TTOTS
+      FREIN=NINEL/TTOTS
+      FREEL=NELA/TTOTS
+      WRITE(6,220) FREQ,FREIN,FREEL                                   
+  220 FORMAT(/,6X,'TOTAL COLL. FREQ. =',D11.4,' (*10**12)/SEC.',/,2X,'IN
+     /ELASTIC COLL. FREQ. =',D11.4,' (*10**12)/SEC.',/,4X,'ELASTIC COLL.
+     / FREQ. =',D11.4,' (*10**12)/SEC.',/)                  
+      WRITE(6,15)                                                       
+C     ILAST=DINT(TMAX1)+1                                                
+C     IF(ILAST.GT.120) ILAST=120                                        
+C     WRITE(6,1010) (TIME(I),I=1,ILAST)                                 
+C1010 FORMAT(/,6X,'DISTRIBUTION OF COLLISION TIMES IN 1 PECOSECOND BINS'
+C    /,2(/),20(1X,6(F10.1,2X)/))                                          
+C     WRITE(6,15) 
+      DO 1020 I=1,NGAS         
+      FREQEL(I)=ICOLL(I,1)/TTOTS                                    
+      FREQSP(I)=ICOLL(I,5)/TTOTS                                        
+      FREINE(I)=ICOLL(I,4)/TTOTS                                    
+      FREATT(I)=ICOLL(I,3)/TTOTS  
+      FREION(I)=ICOLL(I,2)/TTOTS
+ 1020 CONTINUE
+      WRITE(6,1060)
+ 1060 FORMAT(/,2X,'DETAILED COLLISION FREQUENCIES FOR EACH GAS IN UNITS 
+     /OF 10**12/SEC. :',2(/))
+      DO 1100 J=1,NGAS
+      WRITE(6,1065) NAMEG(J)
+ 1065 FORMAT(3X,A25,/,'----------------------------',2(/))
+      DO 1090 K=1,LAST(J) 
+       FRELV=FREQ*ICOLN(J,K)/DFLOAT(NREAL)
+       IF(ICOLN(J,K).EQ.0) THEN
+        ERRFRE=0.0
+       ELSE
+        ERRFRE=100.0D0*DSQRT(DFLOAT(ICOLN(J,K)))/DFLOAT(ICOLN(J,K))
+       ENDIF  
+       WRITE(6,1070) DSCRPT(J,K),FRELV,ERRFRE
+ 1070 FORMAT(3X,A50,3X,D11.4,' +-',F8.4,' %')
+ 1090 CONTINUE
+ 1100 CONTINUE
+      WRITE(6,15)                    
+      WRITE(6,301)                                                      
+  301 FORMAT(2(/),10X,' NORMALISED ENERGY DISTRIBUTION')                
+      J1=0                                                              
+      J2=0    
+      SPECN=DFLOAT(NREAL)
+      SMSPEC=0.0D0                                                      
+      DO 350 K=1,4000                                                   
+      SPEC(K)=SPEC(K)/SPECN                                             
+      J1=J1+1                                                           
+      SMSPEC=SMSPEC+SPEC(K)                                             
+      IF(J1.LT.100) GO TO 350                                           
+      J2=J2+1                                                           
+      SPECS(J2)=SMSPEC                                                  
+      SMSPEC=0.0D0                                                      
+      J1=0                                                              
+  350 CONTINUE                                                          
+      EPLT=EFINAL/40.0D0                                               
+      DO 420 I=1,40                                                     
+      ENER=EPLT*(DFLOAT(I)-0.5D0)                                       
+      WRITE(6,302) ENER,SPECS(I)                                        
+  302 FORMAT(6X,'E=',F11.3,6X,'SPEC=',D11.4)                           
+  420 CONTINUE                                                          
+      RETURN                                                            
+      END 
+      SUBROUTINE ALPCLCBT  
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
+      COMMON/TOFGOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
+     /TOFWVY,TOFWVYER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,TOFDYY,TOFDYYER,
+     /TOFDYZ,TOFDYZER,TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,RATTOF,RATOFER 
+      COMMON/VEL/WX,WY,WZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+C ----------------------------------------------------------------------     
+C  ESTIMATE TIME STEP  FOR AVALANCHE SIMULATION IN TIME OF FLIGHT SIM. 
+C  USES ESTIMATED GAIN OF 3.0 BETWEEN PLANES. 
+C  CALLS TOF AND PT SUBROUTINES AND UPDATES ALPHA AND ATT
+C  VERSION WITH BFIELD ALONG X-AXIS AND EFIELD ALONG Z-AXIS (90 DEGREES)
+C ----------------------------------------------------------------------
+      IMAX=NMAX/10000000 
+      IF(IMAX.LT.5) IMAX=5 
+      NMAX=IMAX*10000000
+      ALPHAST=0.85D0*DABS(ALPHA-ATT) 
+      VDST=WZ*1.D-5                                                 
+      TSTEP=DLOG(3.0D0)/(ALPHAST*VDST*1.0D5)
+      TSTEP=TSTEP*1.0D12
+      TFINAL=7.0D0*TSTEP
+      ITFINAL=7
+C CALC TIME OF FLIGHT AND PT 
+      WRITE(6,25)
+   25 FORMAT(/,2X,'SOLUTION FOR PULSED TOWNSEND AND TIME OF FLIGHT PARAM
+     /ETERS',/,'  ------------------------------------------------------
+     /--------') 
+      WRITE(6,26) TSTEP
+   26 FORMAT(1(/),'  TIME STEP BETWEEN SAMPLING PLANES =',D12.5,' PICOSE
+     /CS.',/)                     
+      CALL MONTEFTGT                            
+      CALL FRIEDLANDT
+      CALL PTG
+      CALL TOFG
+      WRITE(6,27) RALPHA,RALPER,RATTOF,RATOFER
+   27 FORMAT(/,'PT IONISATION AND ATTACHMENT RATES *10**12/SEC',/,'ALPHA
+     /=',D10.3,' +- ',F6.2,' %      ATT=',D10.3,' +- ',F6.2,' %')    
+      WRITE(6,28) 
+   28 FORMAT(/,'TOF DIFFUSION')
+      WRITE(6,29) TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,TOFDYY,TOFDYYER,  
+     /TOFDYZ,TOFDYZER  
+   29 FORMAT(/,'DZZ=',F8.1,' +- ',F5.1,' %',/,'DXX=',F8.1,' +- ',F5.1,' 
+     /%',/,'DYY=',F8.1,' +- ',F5.1,' %',/,'DYZ=',F8.1,' +- ',F5.1,' %')
+      WRITE(6,30)
+   30 FORMAT(/,'TOF DRIFT VELOCITY')
+      WRITE(6,31) TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER   
+   31 FORMAT(/,'WRZ=',F8.2,' +-',F6.1,' %    WRY=',F8.2,' +-',F6.1,' %')
+C CALCULATE TOWNSEND SST COEFICIENTS FROM TOF RESULTS      
+      WRZN=TOFWRZ*1.0D05
+      FC1=WRZN/(2.0D0*TOFDZZ)
+      FC2=((RALPHA-RATTOF)*1.0D12)/TOFDZZ
+      ALPZZ=FC1-DSQRT(FC1**2-FC2)
+C---- -------------------------------------------------    
+C      LOAD NEW ALPHA AND ATTACHMENT INTO COMMON BLOCKS
+C---- -------------------------------------------
+      ALPATT=ALPHA-ATT
+      RATIO=ALPZZ/ALPATT 
+      ALPHA=ALPHA*RATIO
+      ATT=ATT*RATIO 
+      WRITE(6,32) ALPHA,ALPER,ATT,ATTER
+   32 FORMAT(/,'TOWNSEND COEFICIENTS CALCULATED FROM TOF RESULTS:',2(/),
+     /'IONISATION RATE /CM.=',D11.4,' +-',F6.2,' %',/,'ATTACHMENT RATE /
+     /CM.=',D11.4,' +-',F6.2,' %',/)           
+C --- -------------------------------------------      
+      RETURN                                                     
+      END                                                               
+      SUBROUTINE MONTEFTGT                                              
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),IPLAST(6),ISIZE(6),
+     /PENFRA(6,3,260),TCFMAX(6)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6)
+      COMMON/IPT/XS(200),YS(200),ZS(200),TS(200),ES(200),
+     /DCX(200),DCY(200),DCZ(200),IPL(200)
+      COMMON/TPLOUTG/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),VZTPL(8),VYTPL(8),NETPL(8),ATTOINT,
+     /ATTERT,AIOERT 
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+      DIMENSION EPRM(4000000),IESPECP(100)           
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.
+C   THIS ROUTINE HANDLES TERMINATIONS AT FIXED DRIFT TIMES. 
+C   B FIELD AT 90 DEGREES TO EFIELD  
+C ------------------------------------------------------------------- 
+      S=0.0D0 
+      ST=0.0D0 
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0 
+      ZTOT=0.0D0
+      ZTOTS=0.0D0
+      YTOT=0.0D0
+      YTOTS=0.0D0
+      TTOT=0.0D0
+      TTOTS=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9
+      API=DACOS(-1.0D0)
+      F4=2.0D0*API
+      DO 25 I=1,300
+   25 TIME(I)=0.0D0
+      DO 26 K=1,6
+      DO 26 I=1,5
+   26 ICOLL(K,I)=0
+      DO 27 K=1,6
+      DO 27 I=1,260
+   27 ICOLN(K,I)=0
+      DO 28 I=1,4000
+   28 SPEC(I)=0.0D0            
+      DO 33 I=1,100
+   33 IESPECP(I)=0 
+      DO 34 I=1,8
+      ETPL(I)=0.0D0
+      XTPL(I)=0.0D0
+      YTPL(I)=0.0D0
+      ZTPL(I)=0.0D0
+      TTPL(I)=0.0D0
+      XXTPL(I)=0.0D0
+      YYTPL(I)=0.0D0
+      ZZTPL(I)=0.0D0
+      YZTPL(I)=0.0D0
+      VZTPL(I)=0.0D0
+      VYTPL(I)=0.0D0
+   34 NETPL(I)=0                                   
+      ID=0
+      N4000=4000
+      N300=300
+      N100=100
+      I100=0                                                            
+      NCOL=0                                                            
+      NNULL=0
+      NELEC=0
+      NEION=0
+      NMXADD=0
+      NPONT=0 
+      NCLUS=0
+      J1=1 
+C GENERATE INITIAL RANDOM NUMBERS FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C
+      ZSTRT=0.0D0
+      YSTRT=0.0D0
+      TSSTRT=0.0D0                                                    
+C     INITIAL DIRECTION COSINES                                         
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI) 
+C INITIAL VELOCITY
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT
+      CY1=DCY1*VTOT
+      CZ1=DCZ1*VTOT      
+      E100=E1
+      DCZ100=DCZ1
+      DCX100=DCX1
+      DCY100=DCY1                                       
+      JPRINT=NMAX/10
+      IPRINT=0
+      ITER=0
+      IPLANE=0
+      IPRIM=0
+C  LOOP FOR NEW STARTING ELECTRONS 
+  544 IPRIM=IPRIM+1 
+      IF(IPRIM.GT.1) THEN
+C CHECK IF PROGRAM WILL EXCEED MAXIMUM NUMBER OF ITERATIONS 
+C IN THIS CYCLE IF SO OUTPUT CURRENT RESULTS. 
+       IF(ITER.GT.NMAX) THEN
+        IPRIM=IPRIM-1
+        GO TO 700      
+       ENDIF 
+       X=0.0D0
+       Y=0.0D0
+       Z=0.0D0
+       DCZ1=DCZ100
+       DCX1=DCX100
+       DCY1=DCY100
+       E1=E100
+       VTOT=CONST9*DSQRT(E1)
+       CX1=DCX1*VTOT
+       CY1=DCY1*VTOT
+       CZ1=DCZ1*VTOT
+       NCLUS=NCLUS+1
+       ST=0.0D0
+       TSSTRT=0.0D0
+       ZSTRT=0.0D0
+       YSTRT=0.0D0
+       IPLANE=0
+      ENDIF
+      IF(IPRIM.GT.4000000) THEN
+      WRITE(6,944) IPRIM
+ 944  FORMAT(/,2X,'PROGRAM STOPPED TOO MANY PRIMARIES IPRIM =',I7)
+      GO TO 700
+      ENDIF
+      EPRM(IPRIM)=E1
+      IDUM=DINT(E1)+1
+      IDUM=DMIN0(IDUM,N100)
+      IESPECP(IDUM)=IESPECP(IDUM)+1      
+C START OF LOOP FOR NEWLY CREATED ELECTRONS
+  555 TDASH=0.0D0
+      NELEC=NELEC+1
+      TSTOP=TSTEP+IPLANE*TSTEP       
+C MAIN LOOP                                                             
+    1 CONTINUE                                                          
+C     IF(ITER.GT.NMAX)  GO TO 315
+      R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH
+      TDASH=T
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+  15  IF((T+ST).GE.TSTOP) THEN                     
+       IPLANE=IPLANE+1
+       TSTOP=TSTOP+TSTEP
+C STORE POSITION AND ENERGY AT TIME PLANE =IPLANE. 
+       CALL TPLANEGT(T,E1,CX1,CY1,CZ1,EFIELD,IPLANE)
+C CHECK IF PASSED THROUGH MORE THAN ONE PLANE IN THIS STEP       
+       IF((T+ST).GE.TSTOP.AND.TSTOP.LE.TFINAL) GO TO 15
+       IF((T+ST).GE.TFINAL) THEN
+        ZTOT=ZTOT+Z
+        YTOT=YTOT+Y     
+        TTOT=TTOT+ST
+        ZTOTS=ZTOTS+Z-ZSTRT 
+        YTOTS=YTOTS+Y-YSTRT     
+        TTOTS=TTOTS+ST-TSSTRT    
+        TSTOP=TSTEP
+C NO MORE ELECTRONS IN CASCADE TRY NEW PRIMARY ELECTRON
+        IF(NELEC.EQ.(NCLUS+1)) GO TO 544  
+C TAKE ELECTRONS FROM STORE 
+   20   X=XS(NPONT) 
+        Y=YS(NPONT) 
+        Z=ZS(NPONT) 
+        ST=TS(NPONT) 
+        E1=ES(NPONT) 
+        DCX1=DCX(NPONT) 
+        DCY1=DCY(NPONT) 
+        DCZ1=DCZ(NPONT)
+        VTOT=CONST9*DSQRT(E1)
+        CX1=DCX1*VTOT
+        CY1=DCY1*VTOT
+        CZ1=DCZ1*VTOT 
+        IPLANE=IPL(NPONT)   
+        NPONT=NPONT-1 
+        ZSTRT=Z 
+        YSTRT=Y
+        TSSTRT=ST
+        GO TO 555
+       ENDIF              
+      ENDIF
+      DZ=(CZ1*SINWT+(EOVB-CY1)*(1.0D0-COSWT))/WB
+      E=E1+DZ*EFIELD*100.0D0
+ 913  FORMAT(3X,' AFTER STORE ITER=',I10,' DZ=',D12.3,'E1=',D12.3,' COSW
+     /T=',D12.3,' SINWT=',D12.3,' WBT=',D12.3,' CY1=',D12.3)   
+      IF(E.LT.0.0D0) THEN
+       WRITE(6,913)ITER,DZ,E,COSWT,SINWT,WBT,CY1  
+       E=0.001D0
+      ENDIF     
+C CALCULATE ELECTRON VELOCITY IN LAB FRAME
+      CX2=CX1
+      CY2=(CY1-EOVB)*COSWT+CZ1*SINWT+EOVB
+      CZ2=CZ1*COSWT-(CY1-EOVB)*SINWT
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET EOK
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                            
+      IE=DMIN0(IE,N4000)                                               
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                         
+      TTEM=TCF(KGAS,IE)/TCFMAX(KGAS)                                  
+      IF(R4.LE.TTEM)GO TO 137                                           
+      NNULL=NNULL+1                                                     
+      GO TO 1                             
+  137 NCOL=NCOL+1
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11                              
+C                                                                       
+C  CALCULATE DIRECTION COSINES AND POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T
+      TDASH=0.0D0  
+C CALC NEW POSITION                                                
+      X=X+CX1*T                                                         
+      Y=Y+EOVB*T+((CY1-EOVB)*SINWT+CZ1*(1.0D0-COSWT))/WB
+      Z=Z+DZ          
+      ST=ST+T
+      IT=DINT(T+1.0D0)                                              
+      IT=DMIN0(IT,N300)                                               
+      TIME(IT)=TIME(IT)+1.0D0
+C ENERGY SPECTRUM IN 0 KELVIN FRAME                               
+      SPEC(IE)=SPEC(IE)+1.0D0
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                              
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)
+      IF(EOK.LT.EI) THEN
+C FIX ENERGY LOSS SMALLER THAN INCIDENT ENERGY IF A BINING ERROR OCCURS.
+      EI=EOK-0.0001D0
+      ENDIF                                                          
+      IF(IPN(KGAS,I).EQ.0) GO TO 666
+C ATTACHMENT       
+      IF(IPN(KGAS,I).EQ.-1) THEN
+       NEION=NEION+1
+       IPT=IARRY(KGAS,I)
+       ID=ID+1
+       ITER=ITER+1
+       IPRINT=IPRINT+1
+       ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+       ICOLN(KGAS,I)=ICOLN(KGAS,I)+1 
+       IT=DINT(T+1.0D0)
+       IT=DMIN0(IT,N300)
+       TIME(IT)=TIME(IT)+1.0D0
+       ZTOT=ZTOT+Z
+       YTOT=YTOT+Y
+       TTOT=TTOT+ST
+       ZTOTS=ZTOTS+Z-ZSTRT
+       YTOTS=YTOTS+Y-YSTRT
+       TTOTS=TTOTS+ST-TSSTRT
+C  ELECTRON CAPTURED START NEW PRIMARY          
+       IF(NELEC.EQ.(NCLUS+1)) GO TO 544
+C ELECTRON CAPTURED TAKE NEXT ELECTRON FROM STORE       
+       GO TO 20
+      ENDIF                                                 
+      R9=drand48(RDUM)
+C     ESEC=R9*(EOK-EI)      
+C    USE OPAL PETERSON AND BEATY SPLITTING FACTOR.
+      ESEC=WPL(KGAS,I)*TAN(R9*ATAN((EOK-EI)/(2.0D0*WPL(KGAS,I))))       
+      EI=ESEC+EI 
+C STORE POSITION ,ENERGY, DIRECTION COSINES AND TIME OF GENERATION
+C OF IONISATION ELECTRON      
+      NCLUS=NCLUS+1
+      NPONT=NPONT+1
+      NMXADD=MAX(NPONT,NMXADD)
+      IF(NPONT.GT.200) THEN 
+      WRITE(6,546) NPONT,ITER
+ 546  FORMAT(2X,' PROGRAM STOPPED . NPONT=',I4,' ITER=',I10)
+      STOP
+      ENDIF     
+      XS(NPONT)=X       
+      YS(NPONT)=Y
+      ZS(NPONT)=Z
+      TS(NPONT)=ST
+      ES(NPONT)=ESEC
+C RANDOMISE SECONDARY ELECTRON DIRECTION
+      R3=drand48(RDUM)
+      F3=1.0D0-2.0D0*R3
+      THETA0=DACOS(F3)
+      F6=DCOS(THETA0)
+      F5=DSIN(THETA0)
+      R4=drand48(rdum)
+      PHI0=F4*R4
+      F8=DSIN(PHI0)
+      F9=DCOS(PHI0)               
+      DCX(NPONT)=F9*F5
+      DCY(NPONT)=F8*F5
+      DCZ(NPONT)=F6     
+      IPL(NPONT)=IPLANE 
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C
+  666 IPT=IARRY(KGAS,I)
+      ID=ID+1    
+      ITER=ITER+1
+      IPRINT=IPRINT+1                                                   
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1 
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1  
+C IF EXCITATION THEN ADD PROBABILITY ,PENFRA(KGAS,1,I),OF TRANSFER TO 
+C GIVE IONISATION OF THE OTHER GASES IN THE MIXTURE
+      IF(IPEN.EQ.0) GO TO 5  
+      IF(PENFRA(KGAS,1,I).EQ.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+       NCLUS=NCLUS+1
+       NPONT=NPONT+1
+       IF(NPONT.GT.200) THEN
+        WRITE(6,546) NPONT,ITER
+        STOP
+       ENDIF
+C ENTER HERE POSSIBLE DELOCALISATION LENGTH FOR PENNING TRANSFER
+       IF(PENFRA(KGAS,2,I).EQ.0.0) THEN
+        XS(NPONT)=X
+        YS(NPONT)=Y
+        ZS(NPONT)=Z
+        GO TO 667
+       ENDIF
+       ASIGN=1.0
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       XS(NPONT)=X-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       YS(NPONT)=Y-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       ZS(NPONT)=Z-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+C POSSIBLE PENNING TRANSFER TIME
+  667  TPEN=ST
+       IF(PENFRA(KGAS,3,I).EQ.0.0) GO TO 668
+       RAN=drand48(RDUM)
+       TPEN=ST-DLOG(RAN)*PENFRA(KGAS,3,I)
+  668  TS(NPONT)=TPEN
+       ES(NPONT)=1.0
+       DCX(NPONT)=DCX1
+       DCY(NPONT)=DCY1
+       DCZ(NPONT)=DCZ1
+C FIND LAST TIME PLANE BEFORE TPEN
+       TSTOP1=0.0
+       IPLANE1=0
+       DO 669 KDUM=1,ITFINAL
+       TSTOP1=TSTEP+TSTOP1
+       IF(TPEN.LT.TSTOP1) GO TO 670
+       IPLANE1=IPLANE1+1
+  669  CONTINUE
+C PENNING TRANSFER OCCURS AFTER FINAL TIME PLANE CLEAR ENTRY
+       NPONT=NPONT-1
+       NCLUS=NCLUS-1
+       GO TO 5
+  670  IPL(NPONT)=IPLANE1                
+      ENDIF
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C ANISOTROPIC SCATTERING 
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING                                             
+       F3=1.0D0-2.0D0*R3  
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+C     IF(EOK.LT.EI) EI=0.0D0                                           
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2) 
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)                                         
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)
+      IF(ARGZ.EQ.0.0D0) THEN
+C      WRITE(6,9232) ITER,ID,E1
+C9232  FORMAT(3X,'WARNING ARGZ= 0.0 AT ITER =',I10,' ID =',I10,' E1=',E1
+C    /2.3)
+       DCZ1=F6         
+       DCX1=F9*F5                             
+       DCY1=F8*F5 
+       GO TO 190
+      ENDIF                                            
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8) 
+  190 CONTINUE  
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11
+C STORE DIRECTION COSINES AND ENERGY AFTER N COLLISIONS
+C FOR LATER REUSE IN PRIMARY GENERATION
+      I100=I100+1
+      IF(I100.EQ.200) THEN
+       DCZ100=DCZ1
+       DCX100=DCX1        
+       DCY100=DCY1 
+       E100=E1
+       I100=0
+      ENDIF  
+      IF(IPRINT.GT.JPRINT) GO TO 200
+      GO TO 1                                    
+C    INTERMEDIATE PRINTOUT                       
+ 200  IPRINT=0 
+      W=ZTOTS/TTOTS                          
+      W=W*1.0D+09  
+      WY=YTOTS/TTOTS   
+      WY=WY*1.0D+09
+      JCT=ID/100000
+C     IF(J1.EQ.1) WRITE(6,201)                                         
+C 201 FORMAT(/,7X,'INTERMEDIATE OUTPUT',/,'    VELZ     POSZ       TIME 
+C    /      VELY        COUNT    ')                  
+C     WRITE(6,202) W,ZTOTS,TTOTS,WY,JCT   
+C 202 FORMAT(1X,F8.3,3(1X,D10.3),4X,I6)                 
+      J1=J1+1            
+      GO TO 1
+C  MAIN LOOP END                                                  
+  700 XID=DFLOAT(ID)
+      IF(NELEC.GT.IPRIM) THEN
+       ANEION=DFLOAT(NEION)
+       ANBT=DFLOAT(NELEC-IPRIM)
+       ATTOINT=ANEION/ANBT
+       ATTERT=DSQRT(ANEION)/ANEION
+       AIOERT=DSQRT(ANBT)/ANBT
+      ELSE
+       ANEION=DFLOAT(NEION) 
+       ATTOINT=-1.0D0
+       ATTERT=DSQRT(ANEION)/ANEION
+      ENDIF
+      JCT=ID/100000  
+      IF(J1.EQ.1) THEN
+      WRITE(6,940) NCLUS,ITER
+  940 FORMAT(2(/),' PROGRAM STOPPED  (TOO FEW COLLISIONS), DECREASE THE 
+     /ESTIMATED ALPHA.  NCLUS = ',I7,'  ITER =',I9)      
+      STOP
+      ENDIF
+      WRITE(6,878) NELEC,NEION,IPRIM
+ 878  FORMAT(/,' TOTAL NO OF ELECTRONS=',I8,/,' TOTAL NO OF NEG. IONS=',
+     /I8,/,' TOTAL NO OF PRIMARIES=',I8)  
+      EPRMBAR=0.0D0
+      E2PRM=0.0D0
+      IF(IPRIM.EQ.1) RETURN      
+      DO 310 I=1,IPRIM
+      E2PRM=E2PRM+EPRM(I)*EPRM(I)
+ 310  EPRMBAR=EPRMBAR+EPRM(I)
+      EBAR=EPRMBAR/IPRIM
+      EERR=DSQRT(E2PRM/IPRIM-EBAR**2)
+      WRITE(6,836) EBAR,EERR
+ 836  FORMAT(/,2X,'AVERAGE ENERGY OF PRIMARY ELECTRON =',F10.3,' EV.',/,
+     /'   ENERGY SPREAD OF PRIMARY ELECTRON =',F10.3,' EV.')
+C     WRITE(6,835) (IESPECP(J),J=1,100)
+C835  FORMAT(/,2X,'ENERGY SPECTRUM OF PRIMARY ELECTRONS IN 1 EV. BINS',/
+C    /,10(2X,10I5,/))
+      RETURN               
+  315 IF(ITER.GT.NMAX) THEN
+       WRITE(6,991) ITER,NMAX,NPONT,NELEC,IPRIM,NMXADD
+ 991   FORMAT(2(/),' PROGRAM STOPPED.  ITER =',I10,'    NMAX =',I10,/,
+     /' NPONT=',I4,' NELEC=',I8,' IPRIM=',I4,' NMXADD=',I3)
+       STOP
+      ENDIF                                                             
+      RETURN                                                            
+      END
+      SUBROUTINE TPLANEGT(T,E1,CX1,CY1,CZ1,EFLD,IPLANE)
+      IMPLICIT REAL*8 (A-H,O-Z)  
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TPLOUTG/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),VZTPL(8),VYTPL(8),NETPL(8),ATTOINT,
+     /ATTERT,AIOERT 
+C-----------------------------------------------------------------------
+C STORES POSITION, TIME AND ENERGY AND SUMS REQUIRED
+C TO CALCULATE DEVIATIONS AND MEANS AT PLANE =IPLANE 
+C BFIELD AT 90 DEGREES TO EFIELD
+C-----------------------------------------------------------------------
+      TIMESP=IPLANE*TSTEP
+C CALC TIME LEFT TO ARRIVE AT PLANE
+      TIMLFT=TIMESP-ST
+      T2LFT=TIMLFT*TIMLFT
+      WBT=WB*TIMLFT
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      DZ=(CZ1*SINWT+(EOVB-CY1)*(1.0D0-COSWT))/WB
+      CX2=CX1
+      CY2=(CY1-EOVB)*COSWT+CZ1*SINWT+EOVB
+      CZ2=CZ1*COSWT-(CY1-EOVB)*SINWT
+      VTOT=DSQRT(CX2*CX2+CY2*CY2+CZ2*CZ2)
+      DCZ2=CZ2/VTOT
+      DCY2=CY2/VTOT
+      XPLANE=X+CX1*TIMLFT
+      YPLANE=Y+EOVB*TIMLFT+((CY1-EOVB)*SINWT+CZ1*(1.0D0-COSWT))/WB
+      DZ=(CZ1*SINWT+(EOVB-CY1)*(1.0D0-COSWT))/WB
+      ZPLANE=Z+DZ         
+      EPLANE=E1+DZ*EFLD*100.0D0
+      VZPLANE=DCZ2*DSQRT(EPLANE)*CONST3*0.01D0
+      VYPLANE=DCY2*DSQRT(EPLANE)*CONST3*0.01D0
+      XTPL(IPLANE)=XTPL(IPLANE)+XPLANE
+      YTPL(IPLANE)=YTPL(IPLANE)+YPLANE
+      ZTPL(IPLANE)=ZTPL(IPLANE)+ZPLANE
+      XXTPL(IPLANE)=XXTPL(IPLANE)+XPLANE*XPLANE
+      YYTPL(IPLANE)=YYTPL(IPLANE)+YPLANE*YPLANE
+      ZZTPL(IPLANE)=ZZTPL(IPLANE)+ZPLANE*ZPLANE
+      YZTPL(IPLANE)=YZTPL(IPLANE)+YPLANE*ZPLANE
+      ETPL(IPLANE)=ETPL(IPLANE)+EPLANE
+      TTPL(IPLANE)=TTPL(IPLANE)+ST+TIMLFT
+      VZTPL(IPLANE)=VZTPL(IPLANE)+VZPLANE
+      VYTPL(IPLANE)=VYTPL(IPLANE)+VYPLANE
+      NETPL(IPLANE)=NETPL(IPLANE)+1 
+      RETURN
+      END
+      SUBROUTINE PTG
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/TPLOUTG/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),VZTPL(8),VYTPL(8),NETPL(8),ATTOINT,
+     /ATTERT,AIOERT
+      COMMON/PTTOFG/RI(8),EPT(8),VZPT(8),VYPT(8),TTEST(8)
+      DIMENSION ANTPL(8)
+C ------------------------------------------------
+C CALCULATES PULSED TOWNSEND COEFFICIENTS
+C-------------------------------------------------
+      ANTPL(1)=DFLOAT(NETPL(1))
+      RI(1)=(DLOG(ANTPL(1))-DLOG(DFLOAT(IPRIM)))/TSTEP
+      EPT(1)=ETPL(1)/ANTPL(1)
+      TTEST(1)=TTPL(1)/ANTPL(1)
+      VZPT(1)=1.0D+09*VZTPL(1)/ANTPL(1)
+      VYPT(1)=1.0D+09*VYTPL(1)/ANTPL(1)
+      DO 10 I=2,ITFINAL
+      IF(NETPL(I).EQ.0) THEN
+       ITFINAL=I-1
+       GO TO 11
+      ENDIF
+      ANTPL(I)=DFLOAT(NETPL(I))      
+      RI(I)=(DLOG(ANTPL(I))-DLOG(ANTPL(I-1)))/TSTEP
+      EPT(I)=ETPL(I)/ANTPL(I)
+      TTEST(I)=TTPL(I)/ANTPL(I)
+      VZPT(I)=1.0D+09*VZTPL(I)/ANTPL(I)
+      VYPT(I)=1.0D+09*VYTPL(I)/ANTPL(I)
+  10  CONTINUE
+  11  WRITE(6,900) ITFINAL
+ 900  FORMAT(2(/),' PULSED TOWNSEND RESULTS AT',I2,' SEQUENTIAL TIME PLA
+     /NES',/,'PLANE   (ION-ATT)FRQ.    ENERGY      WVZ       WVY   NO.OF
+     / ELECTRONS',/)   
+      DO 20 IPL=1,ITFINAL
+      WRITE(6,910) IPL,RI(IPL),EPT(IPL),VZPT(IPL),VYPT(IPL),NETPL(IPL)
+ 910  FORMAT(1X,I2,4X,D12.4,4X,F7.2,4X,F6.1,4X,F6.1,4X,I8)
+  20  CONTINUE 
+      RETURN
+      END
+      SUBROUTINE TOFG
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/TPLOUTG/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),VZTPL(8),VYTPL(8),NETPL(8),ATTOINT,
+     /ATTERT,AIOERT
+      COMMON/TOFGOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
+     /TOFWVY,TOFWVYER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,TOFDYY,TOFDYYER,
+     /TOFDYZ,TOFDYZER,TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,RATTOF,RATOFER 
+      COMMON/PTTOFG/RI(8),EPT(8),VZPT(8),VYPT(8),TTEST(8)
+      DIMENSION DZTF(8),DXTF(8),DYTF(8),DYZTF(8),WRZ(8),WRY(8),ANTPL(8)
+C----------------------------------------------------------
+C CALCULATES TIME OF FLIGHT COEFFICIENTS
+C---------------------------------------------
+      ANTPL(1)=DFLOAT(NETPL(1))
+      WRZ(1)=ZTPL(1)/(ANTPL(1)*TSTEP)
+      WRY(1)=YTPL(1)/(ANTPL(1)*TSTEP)
+      DZTF(1)=((ZZTPL(1)/ANTPL(1))-(ZTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DXTF(1)=((XXTPL(1)/ANTPL(1))-(XTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DYTF(1)=((YYTPL(1)/ANTPL(1))-(YTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DYZTF(1)=((YZTPL(1)/ANTPL(1))-(YTPL(1)*ZTPL(1)/(ANTPL(1)**2)))/(2
+     /.0D0*TSTEP) 
+      DO 10 I=2,ITFINAL
+      ANTPL(I)=DFLOAT(NETPL(I)) 
+      WRZ(I)=((ZTPL(I)/ANTPL(I))-(ZTPL(I-1)/ANTPL(I-1)))/TSTEP
+      WRY(I)=((YTPL(I)/ANTPL(I))-(YTPL(I-1)/ANTPL(I-1)))/TSTEP
+      DZTF(I)=((ZZTPL(I)/ANTPL(I))-(ZTPL(I)/ANTPL(I))**2-(ZZTPL(I-1)/ANT
+     /PL(I-1))+(ZTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DXTF(I)=((XXTPL(I)/ANTPL(I))-(XTPL(I)/ANTPL(I))**2-(XXTPL(I-1)/ANT
+     /PL(I-1))+(XTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DYTF(I)=((YYTPL(I)/ANTPL(I))-(YTPL(I)/ANTPL(I))**2-(YYTPL(I-1)/ANT
+     /PL(I-1))+(YTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DYZTF(I)=((YZTPL(I)/ANTPL(I))-(YTPL(I)*ZTPL(I)/(ANTPL(I)**2))-(YZT
+     /PL(I-1)/ANTPL(I-1))+(YTPL(I-1)*ZTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
+     /TSTEP)
+  10  CONTINUE  
+      DO 15 I=1,ITFINAL
+      WRZ(I)=WRZ(I)*1.0D+09
+      WRY(I)=WRY(I)*1.0D+09
+      DZTF(I)=DZTF(I)*1.0D+16
+      DXTF(I)=DXTF(I)*1.0D+16
+      DYTF(I)=DYTF(I)*1.0D+16
+      DYZTF(I)=DYZTF(I)*1.0D+16
+  15  CONTINUE
+      WRITE(6,900) ITFINAL
+ 900  FORMAT(2(/),' TIME OF FLIGHT RESULTS AT',I2,' SEQUENTIAL TIME PLAN
+     /ES',/,'PLANE    DZZ      DXX      DYY      DYZ        WRZ         
+     /WRY',/)
+      DO 20 IPL=1,ITFINAL   
+      WRITE(6,910) IPL,DZTF(IPL),DXTF(IPL),DYTF(IPL),DYZTF(IPL),WRZ(IPL)
+     /,WRY(IPL)  
+ 910  FORMAT(1X,I2,2X,4F9.1,4X,F8.2,4X,F8.2)
+  20  CONTINUE    
+      IF(NETPL(1).GT.NETPL(ITFINAL)) THEN
+C        NET ATTACHMENT TAKE RESULTS FROM PLANE 2
+       TOFENE=EPT(2)
+       TOFENER=100.0D0*DABS((EPT(2)-EPT(3))/(2.0D0*EPT(2)))
+       TOFWVZ=VZPT(2)
+       TOFWVZER=100.0D0*DABS((VZPT(2)-VZPT(3))/(2.0D0*VZPT(2))) 
+       TOFWVY=VYPT(2)
+       TOFWVYER=100.0D0*DABS((VYPT(2)-VYPT(3))/(2.0D0*VYPT(2))) 
+       TOFDZZ=DZTF(2)
+       TOFDZZER=100.0D0*DABS((DZTF(2)-DZTF(3))/(2.0D0*DZTF(2)))
+       TOFDXX=DXTF(2)
+       TOFDXXER=100.0D0*DABS((DXTF(2)-DXTF(3))/(2.0D0*DXTF(2)))
+       TOFDYY=DYTF(2)
+       TOFDYYER=100.0D0*DABS((DYTF(2)-DYTF(3))/(2.0D0*DYTF(2)))
+       TOFDYZ=DYZTF(2)
+       TOFDYZER=100.0D0*DABS((DYZTF(2)-DYZTF(3))/(2.0D0*DYZTF(2)))
+       TOFWRZ=WRZ(2)
+       TOFWRY=WRY(2)
+       TOFWRZER=100.0D0*DABS((WRZ(2)-WRZ(3))/(2.0D0*WRZ(2)))
+       TOFWRYER=100.0D0*DABS((WRY(2)-WRY(3))/(2.0D0*WRY(2))) 
+        ANST2=DFLOAT(NETPL(2))
+        ANST3=DFLOAT(NETPL(3))
+        ANST4=ANST3-DSQRT(ANST3)
+        ANST5=DLOG(ANST2/ANST3)
+        ANST6=DLOG(ANST2/ANST4)
+        ANST7=ANST6/ANST5
+        ANST8=ANST7-1.0D0
+       IF(ATTOINT.EQ.-1.0D0) THEN
+C        NO IONISATION
+        RALPHA=0.0D0
+        RALPER=0.0D0
+        RATTOF=-RI(2)
+        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
+       ELSE
+        RALPHA=RI(2)/(1.0D0-ATTOINT)
+        RALPER=100.0D0*DSQRT(ANST8**2+AIOERT**2)
+        RATTOF=ATTOINT*RI(2)/(1.0D0-ATTOINT)
+        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
+       ENDIF 
+      ELSE
+C NET IONISATION TAKE RESULTS FROM PLANE ITFINAL
+       I1=ITFINAL
+       I2=ITFINAL-1  
+       TOFENE=EPT(I1)
+       TOFENER=100.0D0*DABS((EPT(I1)-EPT(I2))/(2.0D0*EPT(I1)))
+       TOFWVZ=VZPT(I1)
+       TOFWVZER=100.0D0*DABS((VZPT(I1)-VZPT(I2))/(2.0D0*VZPT(I1)))
+       TOFWVY=VYPT(I1)
+       TOFWVYER=100.0D0*DABS((VYPT(I1)-VYPT(I2))/(2.0D0*VYPT(I1)))
+       TOFDZZ=DZTF(I1)
+       TOFDZZER=100.0D0*DABS((DZTF(I1)-DZTF(I2))/(2.0D0*DZTF(I1)))
+       TOFDXX=DXTF(I1)
+       TOFDXXER=100.0D0*DABS((DXTF(I1)-DXTF(I2))/(2.0D0*DXTF(I1)))
+       TOFDYY=DYTF(I1)
+       TOFDYYER=100.0D0*DABS((DYTF(I1)-DYTF(I2))/(2.0D0*DYTF(I1)))
+       TOFDYZ=DYZTF(I1)
+       TOFDYZER=100.0D0*DABS((DYZTF(I1)-DYZTF(I2))/(2.0D0*DYZTF(I1)))
+       TOFWRZ=WRZ(I1)
+       TOFWRY=WRY(I1)
+       TOFWRZER=100.0D0*DABS((WRZ(I1)-WRZ(I2))/(2.0D0*WRZ(I1)))
+       TOFWRYER=100.0D0*DABS((WRY(I1)-WRY(I2))/(2.0D0*WRY(I1)))
+       ATER=DABS((RI(I1)-RI(I2))/(2.0D0*RI(I1)))
+       RALPHA=RI(I1)/(1.0D0-ATTOINT)
+       RALPER=100.0D0*DSQRT(ATER**2+AIOERT**2)
+       RATTOF=ATTOINT*RI(I1)/(1.0D0-ATTOINT)
+       IF(ATTOINT.NE.0.0D0) THEN
+        RATOFER=100.0D0*DSQRT(ATER**2+ATTERT**2)
+       ELSE
+        RATOFER=0.0D0
+       ENDIF  
+      ENDIF
+      RETURN
+      END                
+      SUBROUTINE ALPCLCCT   
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
+      COMMON/TOFHOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
+     /TOFWVY,TOFWVYER,TOFWVX,TOFWVXER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,
+     /TOFDYY,TOFDYYER,TOFDYZ,TOFDYZER,TOFDXY,TOFDXYER,TOFDXZ,TOFDXZER,
+     /TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,TOFWRX,TOFWRXER,RATTOF,RATOFER 
+      COMMON/VEL/WX,WY,WZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+C ----------------------------------------------------------------------     
+C  ESTIMATE TIME STEP  FOR AVALANCHE SIMULATION IN TIME OF FLIGHT SIM. 
+C  USES ESTIMATED GAIN OF 3.0 BETWEEN PLANES. 
+C  CALLS TOF AND PT SUBROUTINES AND UPDATES ALPHA AND ATT
+C  BFIELD AT ANY ANGLE BTHETA TO EFIELD
+C ----------------------------------------------------------------------
+      IMAX=NMAX/10000000 
+      IF(IMAX.LT.5) IMAX=5 
+      NMAX=IMAX*10000000
+      ALPHAST=0.85D0*DABS(ALPHA-ATT) 
+      VDST=WZ*1.D-5                                                 
+      TSTEP=DLOG(3.0D0)/(ALPHAST*VDST*1.0D5)
+      TSTEP=TSTEP*1.0D12
+      TFINAL=7.0D0*TSTEP
+      ITFINAL=7
+C CALC TIME OF FLIGHT AND PT 
+      WRITE(6,25)
+   25 FORMAT(/,2X,'SOLUTION FOR PULSED TOWNSEND AND TIME OF FLIGHT PARAM
+     /ETERS',/,'  ------------------------------------------------------
+     /--------') 
+      WRITE(6,26) TSTEP
+   26 FORMAT(1(/),'  TIME STEP BETWEEN SAMPLING PLANES =',D12.5,' PICOSE
+     /CS.',/)                     
+      CALL MONTEFTHT                             
+      CALL FRIEDLANDT 
+      CALL PTH
+      CALL TOFH
+      WRITE(6,27) RALPHA,RALPER,RATTOF,RATOFER
+   27 FORMAT(/,'PT IONISATION AND ATTACHMENT RATES *10**12/SEC',/,'ALPHA
+     /=',D10.3,' +- ',F6.2,' %      ATT=',D10.3,' +- ',F6.2,' %')    
+      WRITE(6,28) 
+   28 FORMAT(/,'TOF DIFFUSION')
+      WRITE(6,29) TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,TOFDYY,TOFDYYER,  
+     /TOFDYZ,TOFDYZER,TOFDXZ,TOFDXZER,TOFDXY,TOFDXYER  
+   29 FORMAT(/,'DZZ=',F8.1,' +- ',F5.1,' %',/,'DXX=',F8.1,' +- ',F5.1,' 
+     /%',/,'DYY=',F8.1,' +- ',F5.1,' %',/,'DYZ=',F8.1,' +- ',F5.1,' %',/
+     /,'DXZ=',F8.1,' +- ',F5.1,' %',/,'DXY=',F8.1,' +- ',F5.1,' %')
+      WRITE(6,30)
+   30 FORMAT(/,'TOF DRIFT VELOCITY')
+      WRITE(6,31) TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,TOFWRX,TOFWRXER   
+   31 FORMAT(/,'WRZ=',F8.2,' +-',F6.1,' %    WRY=',F8.2,' +-',F6.1,' %  
+     / WRX=',F8.2,' +-',F6.1,' %')  
+C CALCULATE TOWNSEND SST COEFICIENTS FROM TOF RESULTS      
+      WRZN=TOFWRZ*1.0D05
+      FC1=WRZN/(2.0D0*TOFDZZ)
+      FC2=((RALPHA-RATTOF)*1.0D12)/TOFDZZ
+      ALPZZ=FC1-DSQRT(FC1**2-FC2)
+C-----------------------------------------------------    
+C LOAD NEW ALPHA AND ATTACHMENT INTO COMMON BLOCKS
+C-----------------------------------------------
+      ALPATT=ALPHA-ATT
+      RATIO=ALPZZ/ALPATT 
+      ALPHA=ALPHA*RATIO
+      ATT=ATT*RATIO 
+      WRITE(6,32) ALPHA,ALPER,ATT,ATTER
+   32 FORMAT(/,'TOWNSEND COEFICIENTS CALCULATED FROM TOF RESULTS:',2(/),
+     /'IONISATION RATE /CM.=',D11.4,' +-',F6.2,' %',/,'ATTACHMENT RATE /
+     /CM.=',D11.4,' +-',F6.2,' %',/)           
+C      ------------------------------------------      
+      RETURN                                                     
+      END                                                               
+      SUBROUTINE MONTEFTHT                                              
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG
+      COMMON/ROTS/RCS,RSN,EFZ100,EFX100,F1,EOVBR                        
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),IPLAST(6),ISIZE(6),
+     /PENFRA(6,3,260),TCFMAX(6)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6)
+      COMMON/IPT/XS(200),YS(200),ZS(200),TS(200),ES(200),
+     /DCX(200),DCY(200),DCZ(200),IPL(200)
+      COMMON/TPLOUTH/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),XZTPL(8),XYTPL(8),VZTPL(8),VYTPL(8),
+     /VXTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO 
+      DIMENSION EPRM(4000000),IESPECP(100)           
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.
+C   THIS ROUTINE HANDLES TERMINATIONS AT FIXED DRIFT TIMES. 
+C   SOLVES MOTION IN COORDINATE SYSTEM WITH BFIELD ALIGNED TO X-AXIS
+C   ELECTRIC FIELD AT AN ANGLE BTHETA IN THE X-Z PLANE.
+C   THE RESULTS FOR THE VELOCITY VECTORS  ARE THEN 
+C   ROTATED INTO THE STANDARD COORDINATE FRAME WITH THE ELECTRIC FIELD 
+C   ALONG THE Z-AXIS AND THE BFIELD AT AN ANGLE BTHETA TO THE ELECTRIC
+C   FIELD IN THE X-Z PLANE  
+C ------------------------------------------------------------------- 
+      S=0.0D0 
+      ST=0.0D0 
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0 
+      ZTOT=0.0D0
+      ZTOTS=0.0D0
+      YTOT=0.0D0
+      YTOTS=0.0D0
+      XTOT=0.0D0
+      XTOTS=0.0D0
+      TTOT=0.0D0
+      TTOTS=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      DO 25 I=1,300
+   25 TIME(I)=0.0D0
+      DO 26 I=1,5
+      DO 26 K=1,6
+   26 ICOLL(K,I)=0
+      DO 27 I=1,260
+      DO 27 K=1,6
+   27 ICOLN(K,I)=0
+      DO 28 I=1,4000
+   28 SPEC(I)=0.0D0            
+      DO 33 I=1,100
+   33 IESPECP(I)=0 
+      DO 34 I=1,8
+      ETPL(I)=0.0D0
+      XTPL(I)=0.0D0
+      YTPL(I)=0.0D0
+      ZTPL(I)=0.0D0
+      TTPL(I)=0.0D0
+      XXTPL(I)=0.0D0
+      YYTPL(I)=0.0D0
+      ZZTPL(I)=0.0D0
+      YZTPL(I)=0.0D0
+      XZTPL(I)=0.0D0
+      XYTPL(I)=0.0D0
+      VZTPL(I)=0.0D0
+      VYTPL(I)=0.0D0
+      VXTPL(I)=0.0D0
+   34 NETPL(I)=0                                   
+      ID=0
+      N4000=4000
+      N300=300
+      N100=100
+      I100=0                                                            
+      NCOL=0                                                            
+      NNULL=0
+      NELEC=0
+      NEION=0
+      NMXADD=0
+      NPONT=0 
+      NCLUS=0
+      J1=1 
+      ZSTRT=0.0D0
+      YSTRT=0.0D0
+      XSTRT=0.0D0
+      TSSTRT=0.0D0 
+      API=DACOS(-1.0D0)  
+C CALC ROTATION MATRIX ANGLES
+      RCS=DCOS((BTHETA-90.0D0)*API/180.0D0)
+      RSN=DSIN((BTHETA-90.0D0)*API/180.0D0)
+C 
+      RTHETA=BTHETA*API/180.0D0
+      EFZ100=EFIELD*100.0D0*DSIN(RTHETA)
+      EFX100=EFIELD*100.0D0*DCOS(RTHETA)
+      F1=EFIELD*CONST2*DCOS(RTHETA)
+      F4=2.0D0*API
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9
+      EOVBR=EOVB*DSIN(RTHETA)
+C GENERATE INITIAL RANDOM NUMBERS FOR MAXWELL BOLTZMAN 
+      CALL GERJAN
+      IMBPT=0
+C     INITIAL DIRECTION COSINES                                         
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI) 
+C INITIAL VELOCITY
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT
+      CY1=DCY1*VTOT
+      CZ1=DCZ1*VTOT      
+      E100=E1
+      DCZ100=DCZ1
+      DCX100=DCX1
+      DCY100=DCY1                                       
+      JPRINT=NMAX/10
+      IPRINT=0
+      ITER=0
+      IPLANE=0
+      IPRIM=0
+C  LOOP FOR NEW STARTING ELECTRONS 
+  544 IPRIM=IPRIM+1 
+      IF(IPRIM.GT.1) THEN
+C CHECK IF PROGRAM WILL EXCEED MAXIMUM NUMBER OF ITERATIONS 
+C IN THIS CYCLE IF SO OUTPUT CURRENT RESULTS. 
+       IF(ITER.GT.NMAX) THEN
+        IPRIM=IPRIM-1
+        GO TO 700      
+       ENDIF 
+       X=0.0D0
+       Y=0.0D0
+       Z=0.0D0
+       DCZ1=DCZ100
+       DCX1=DCX100
+       DCY1=DCY100
+       E1=E100
+       VTOT=CONST9*DSQRT(E1)
+       CX1=DCX1*VTOT
+       CY1=DCY1*VTOT
+       CZ1=DCZ1*VTOT
+       NCLUS=NCLUS+1
+       ST=0.0D0
+       TSSTRT=0.0D0
+       ZSTRT=0.0D0
+       YSTRT=0.0D0
+       XSTRT=0.0D0
+       IPLANE=0
+      ENDIF
+      IF(IPRIM.GT.4000000) THEN
+      WRITE(6,944) IPRIM
+ 944  FORMAT(/,2X,'PROGRAM STOPPED TOO MANY PRIMARIES IPRIM =',I7)
+      GO TO 700
+      ENDIF
+      EPRM(IPRIM)=E1
+      IDUM=DINT(E1)+1
+      IDUM=DMIN0(IDUM,N100)
+      IESPECP(IDUM)=IESPECP(IDUM)+1      
+C START OF LOOP FOR NEWLY CREATED ELECTRONS
+  555 TDASH=0.0D0
+      NELEC=NELEC+1
+      TSTOP=TSTEP+IPLANE*TSTEP       
+C MAIN LOOP                                                             
+    1 CONTINUE                                                          
+C     IF(ITER.GT.NMAX)  GO TO 315
+      R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH
+      TDASH=T
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+  15  IF((T+ST).GE.TSTOP) THEN                     
+       IPLANE=IPLANE+1
+       TSTOP=TSTOP+TSTEP
+C STORE POSITION AND ENERGY AT TIME PLANE =IPLANE. 
+       CALL TPLANEHT(T,E1,CX1,CY1,CZ1,EFIELD,IPLANE)
+C CHECK IF PASSED THROUGH MORE THAN ONE PLANE IN THIS STEP       
+       IF((T+ST).GE.TSTOP.AND.TSTOP.LE.TFINAL) GO TO 15
+       IF((T+ST).GE.TFINAL) THEN
+        ZTOT=ZTOT+Z
+        YTOT=YTOT+Y
+        XTOT=XTOT+X     
+        TTOT=TTOT+ST
+        ZTOTS=ZTOTS+Z-ZSTRT 
+        YTOTS=YTOTS+Y-YSTRT
+        XTOTS=XTOTS+X-XSTRT     
+        TTOTS=TTOTS+ST-TSSTRT    
+        TSTOP=TSTEP
+C NO MORE ELECTRONS IN CASCADE TRY NEW PRIMARY ELECTRON
+        IF(NELEC.EQ.(NCLUS+1)) GO TO 544  
+C TAKE ELECTRONS FROM STORE 
+   20   X=XS(NPONT) 
+        Y=YS(NPONT) 
+        Z=ZS(NPONT) 
+        ST=TS(NPONT) 
+        E1=ES(NPONT) 
+        DCX1=DCX(NPONT) 
+        DCY1=DCY(NPONT) 
+        DCZ1=DCZ(NPONT)
+        VTOT=CONST9*DSQRT(E1)
+        CX1=DCX1*VTOT
+        CY1=DCY1*VTOT
+        CZ1=DCZ1*VTOT 
+        IPLANE=IPL(NPONT)   
+        NPONT=NPONT-1 
+        ZSTRT=Z 
+        YSTRT=Y
+        XSTRT=X
+        TSSTRT=ST
+        GO TO 555
+       ENDIF              
+      ENDIF
+      DZ=(CZ1*SINWT+(EOVBR-CY1)*(1.0D0-COSWT))/WB
+      DX=CX1*T+F1*T*T
+      E=E1+DZ*EFZ100+DX*EFX100
+ 913  FORMAT(3X,' AFTER STORE ITER=',I10,' DZ=',D12.3,'E1=',D12.3,' COSW
+     /T=',D12.3,' SINWT=',D12.3,' WBT=',D12.3,' CY1=',D12.3)   
+      IF(E.LT.0.0D0) THEN
+       WRITE(6,913)ITER,DZ,E,COSWT,SINWT,WBT,CY1  
+       E=0.001D0
+      ENDIF            
+C CALCULATE ELECTRON VELOCITY IN LAB FRAME
+      CX2=CX1+2.0D0*F1*T
+      CY2=(CY1-EOVBR)*COSWT+CZ1*SINWT+EOVBR
+      CZ2=CZ1*COSWT-(CY1-EOVBR)*SINWT
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+      R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+    4 IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+       IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET, EOK.
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                             
+      IE=DMIN0(IE,N4000)                                               
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                           
+      TTEM=TCF(KGAS,IE)/TCFMAX(KGAS)                                    
+      IF(R4.LE.TTEM) GO TO 137
+      NNULL=NNULL+1                                                    
+      GO TO 1 
+  137 NCOL=NCOL+1   
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11
+C  CALCULATE  POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T
+      TDASH=0.0D0  
+C CALC NEW POSITION                                                
+      X=X+DX                                                            
+      Y=Y+EOVBR*T+((CY1-EOVBR)*SINWT+CZ1*(1.0D0-COSWT))/WB
+      Z=Z+DZ          
+      ST=ST+T
+      IT=DINT(T+1.0D0)                                                
+      IT=DMIN0(IT,N300)                                                
+      TIME(IT)=TIME(IT)+1.0D0    
+C ENERGY SPECTRUM IN 0 KELVIN FRAME                                    
+      SPEC(IE)=SPEC(IE)+1.0D0
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY
+      CALL SORTT(KGAS,I,R2,IE)                                         
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                 
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)
+      IF(EOK.LT.EI) THEN
+C FIX ENERGY LOSS SMALLER THAN INCIDENT ENERGY IF A BINING ERROR OCCURS.
+      EI=EOK-0.0001D0
+      ENDIF                                                          
+      IF(IPN(KGAS,I).EQ.0) GO TO 666
+C ATTACHMENT       
+      IF(IPN(KGAS,I).EQ.-1) THEN
+       NEION=NEION+1
+       IPT=IARRY(KGAS,I)
+       ID=ID+1
+       ITER=ITER+1
+       IPRINT=IPRINT+1
+       ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+       ICOLN(KGAS,I)=ICOLN(KGAS,I)+1 
+       IT=DINT(T+1.0D0)
+       IT=DMIN0(IT,N300)
+       TIME(IT)=TIME(IT)+1.0D0
+       ZTOT=ZTOT+Z
+       YTOT=YTOT+Y
+       XTOT=XTOT+X
+       TTOT=TTOT+ST
+       ZTOTS=ZTOTS+Z-ZSTRT
+       YTOTS=YTOTS+Y-YSTRT
+       XTOTS=XTOTS+X-XSTRT
+       TTOTS=TTOTS+ST-TSSTRT
+C  ELECTRON CAPTURED START NEW PRIMARY          
+       IF(NELEC.EQ.(NCLUS+1)) GO TO 544
+C ELECTRON CAPTURED TAKE NEXT ELECTRON FROM STORE       
+       GO TO 20
+      ENDIF                                                 
+      R9=drand48(RDUM)
+C     ESEC=R9*(EOK-EI)      
+C    USE OPAL PETERSON AND BEATY SPLITTING FACTOR.
+      ESEC=WPL(KGAS,I)*TAN(R9*ATAN((EOK-EI)/(2.0D0*WPL(KGAS,I))))    
+      EI=ESEC+EI 
+C STORE POSITION ,ENERGY, DIRECTION COSINES AND TIME OF GENERATION
+C OF IONISATION ELECTRON      
+      NCLUS=NCLUS+1
+      NPONT=NPONT+1
+      NMXADD=MAX(NPONT,NMXADD)
+      IF(NPONT.GT.200) THEN 
+      WRITE(6,546) NPONT,ITER
+ 546  FORMAT(2X,' PROGRAM STOPPED . NPONT=',I4,' ITER=',I10)
+      STOP
+      ENDIF     
+      XS(NPONT)=X       
+      YS(NPONT)=Y
+      ZS(NPONT)=Z
+      TS(NPONT)=ST
+      ES(NPONT)=ESEC
+C RANDOMISE SECONDARY ELECTRON DIRECTION
+      R3=drand48(RDUM)
+      F3=1.0D0-2.0D0*R3
+      THETA0=DACOS(F3)
+      F6=DCOS(THETA0)
+      F5=DSIN(THETA0)
+      R4=drand48(rdum)
+      PHI0=F4*R4
+      F8=DSIN(PHI0)
+      F9=DCOS(PHI0)               
+      DCX(NPONT)=F9*F5
+      DCY(NPONT)=F8*F5
+      DCZ(NPONT)=F6     
+      IPL(NPONT)=IPLANE 
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C
+  666 IPT=IARRY(KGAS,I)
+      ID=ID+1    
+      ITER=ITER+1
+      IPRINT=IPRINT+1                                                   
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1 
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1   
+C IF EXCITATION THEN ADD PROBABILITY ,PENFRA(KGAS,1,I),OF TRANSFER TO 
+C GIVE IONISATION OF THE OTHER GASES IN THE MIXTURE
+      IF(IPEN.EQ.0) GO TO 5
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+       NCLUS=NCLUS+1
+       NPONT=NPONT+1
+       IF(NPONT.GT.200) THEN
+        WRITE(6,546) NPONT,ITER
+        STOP
+       ENDIF
+C ENTER HERE POSSIBLE DELOCALISATION LENGTH FOR PENNING TRANSFER
+       IF(PENFRA(KGAS,2,I).EQ.0.0) THEN
+        XS(NPONT)=X
+        YS(NPONT)=Y
+        ZS(NPONT)=Z
+        GO TO 667
+       ENDIF    
+       ASIGN=1.0
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       XS(NPONT)=X-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       YS(NPONT)=Y-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       ZS(NPONT)=Z-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+C ENTER POSSIBLE PENNING TRANSFER TIME
+  667  TPEN=ST
+       IF(PENFRA(KGAS,3,I).EQ.0.0) GO TO 668
+       RAN=drand48(RDUM)
+       TPEN=ST-DLOG(RAN)*PENFRA(KGAS,3,I)
+  668  TS(NPONT)=TPEN
+       ES(NPONT)=1.0
+       DCX(NPONT)=DCX1
+       DCY(NPONT)=DCY1
+       DCZ(NPONT)=DCZ1
+C FIND LAST TIME PLANE BEFORE TPEN
+       TSTOP1=0.0
+       IPLANE1=0
+       DO 669 KDUM=1,ITFINAL
+       TSTOP1=TSTEP+TSTOP1
+       IF(TPEN.LT.TSTOP1) GO TO 670
+       IPLANE1=IPLANE1+1
+  669  CONTINUE
+C PENNING TRANSFER OCCURS AFTER FINAL TIME PLANE. CLEAR ENTRY
+       NPONT=NPONT-1
+       NCLUS=NCLUS-1
+       GO TO 5
+  670  IPL(NPONT)=IPLANE1         
+      ENDIF                                   
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C ANISOTROPIC SCATTERING
+      R3=drand48(RDUM)
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)        
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING                                            
+       F3=1.0D0-2.0D0*R3  
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)                                                     
+C     IF(EOK.LT.EI) EI=0.0D0                                           
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2) 
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                        
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)                                          
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6         
+       DCX1=F9*F5                             
+       DCY1=F8*F5 
+       GO TO 190
+      ENDIF                                            
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8) 
+  190 CONTINUE  
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION COSINES IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11
+C STORE DIRECTION COSINES AND ENERGY AFTER N COLLISIONS
+C FOR LATER REUSE IN PRIMARY GENERATION
+      I100=I100+1
+      IF(I100.EQ.200) THEN
+       DCZ100=DCZ1
+       DCX100=DCX1        
+       DCY100=DCY1 
+       E100=E1
+       I100=0
+      ENDIF  
+      IF(IPRINT.GT.JPRINT) GO TO 200
+      GO TO 1                                    
+C    INTERMEDIATE PRINTOUT                       
+ 200  IPRINT=0 
+      WZ=ZTOTS/TTOTS                          
+      WZ=WZ*1.0D+09  
+      WY=YTOTS/TTOTS   
+      WY=WY*1.0D+09
+      WX=XTOTS/TTOTS
+      WX=WX*1.0D+09
+      JCT=ID/100000
+C      IF(J1.EQ.1) WRITE(6,201)                                         
+C 201 FORMAT(/,7X,'INTERMEDIATE OUTPUT',/,'    VELZ     VELY     VELX    
+C    /   TIME       COUNT    ')      
+C ROTATE INTERMEDIATE OUTPUT INTO LAB FRAME 
+      WZR=WZ*RCS-WX*RSN
+      WYR=WY
+      WXR=WZ*RSN+WX*RCS
+C     WRITE(6,202) WZR,WYR,WXR,TTOTS,JCT   
+C 202 FORMAT(3(1X,F8.3),1X,D10.3,4X,I6)                 
+      J1=J1+1            
+      GO TO 1
+C  MAIN LOOP END                                                  
+  700 XID=DFLOAT(ID)
+      IF(NELEC.GT.IPRIM) THEN
+       ANEION=DFLOAT(NEION)
+       ANBT=DFLOAT(NELEC-IPRIM)
+       ATTOINT=ANEION/ANBT
+       ATTERT=DSQRT(ANEION)/ANEION
+       AIOERT=DSQRT(ANBT)/ANBT
+      ELSE
+       ANEION=DFLOAT(NEION) 
+       ATTOINT=-1.0D0
+       ATTERT=DSQRT(ANEION)/ANEION
+      ENDIF
+      JCT=ID/100000  
+      IF(J1.EQ.1) THEN
+      WRITE(6,940) NCLUS,ITER
+  940 FORMAT(2(/),' PROGRAM STOPPED  (TOO FEW COLLISIONS), DECREASE THE 
+     /ESTIMATED ALPHA.  NCLUS = ',I7,'  ITER =',I9)      
+      STOP
+      ENDIF
+      WRITE(6,878) NELEC,NEION,IPRIM
+ 878  FORMAT(/,' TOTAL NO OF ELECTRONS=',I8,/,' TOTAL NO OF NEG. IONS=',
+     /I8,/,' TOTAL NO OF PRIMARIES=',I8)  
+      EPRMBAR=0.0D0
+      E2PRM=0.0D0
+      IF(IPRIM.EQ.1) RETURN      
+      DO 310 I=1,IPRIM
+      E2PRM=E2PRM+EPRM(I)*EPRM(I)
+ 310  EPRMBAR=EPRMBAR+EPRM(I)
+      EBAR=EPRMBAR/IPRIM
+      EERR=DSQRT(E2PRM/IPRIM-EBAR**2)
+      WRITE(6,836) EBAR,EERR
+ 836  FORMAT(/,2X,'AVERAGE ENERGY OF PRIMARY ELECTRON =',F10.3,' EV.',/,
+     /'   ENERGY SPREAD OF PRIMARY ELECTRON =',F10.3,' EV.')
+C     WRITE(6,835) (IESPECP(J),J=1,100)
+C835  FORMAT(/,2X,'ENERGY SPECTRUM OF PRIMARY ELECTRONS IN 1 EV. BINS',/
+C    /,10(2X,10I5,/))
+      RETURN               
+  315 IF(ITER.GT.NMAX) THEN
+       WRITE(6,991) ITER,NMAX,NPONT,NELEC,IPRIM,NMXADD
+ 991   FORMAT(2(/),' PROGRAM STOPPED.  ITER =',I10,'    NMAX =',I10,/,
+     /' NPONT=',I4,' NELEC=',I8,' IPRIM=',I4,' NMXADD=',I3)
+       STOP
+      ENDIF                                                             
+      RETURN                                                            
+      END
+      SUBROUTINE TPLANEHT(T,E1,CX1,CY1,CZ1,EFLD,IPLANE)
+      IMPLICIT REAL*8 (A-H,O-Z)  
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG
+      COMMON/ROTS/RCS,RSN,EFZ100,EFX100,F1,EOVBR
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TPLOUTH/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),XZTPL(8),XYTPL(8),VZTPL(8),VYTPL(8),
+     /VXTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
+C-----------------------------------------------------------------------
+C STORES POSITION, TIME AND ENERGY AND SUMS REQUIRED
+C TO CALCULATE DEVIATIONS AND MEANS AT PLANE =IPLANE 
+C USED WITH BFIELD AT ANGLE BTHETA TO EFIELD      
+C ROTATES STORED POSITIONS INTO LAB FRAME.
+C-----------------------------------------------------------------------
+      TIMESP=IPLANE*TSTEP
+C CALC TIME LEFT TO ARRIVE AT PLANE
+      TIMLFT=TIMESP-ST
+      T2LFT=TIMLFT*TIMLFT
+      WBT=WB*TIMLFT
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      CX2=CX1+2.0D0*F1*TIMLFT
+      CY2=(CY1-EOVBR)*COSWT+CZ1*SINWT+EOVBR
+      CZ2=CZ1*COSWT-(CY1-EOVBR)*SINWT
+      VTOT=DSQRT(CX2*CX2+CY2*CY2+CZ2*CZ2)
+      DCZ2=CZ2/VTOT
+      DCY2=CY2/VTOT
+      DCX2=CX2/VTOT
+      DX=CX1*TIMLFT+F1*TIMLFT*TIMLFT
+      XPLANE=X+DX                          
+      YPLANE=Y+EOVBR*TIMLFT+((CY1-EOVBR)*SINWT+CZ1*(1.0D0-COSWT))/WB
+      DZ=(CZ1*SINWT+(EOVBR-CY1)*(1.0D0-COSWT))/WB
+      ZPLANE=Z+DZ
+C ROTATE POSITIONS     
+      ZPLANER=ZPLANE*RCS-XPLANE*RSN
+      YPLANER=YPLANE
+      XPLANER=ZPLANE*RSN+XPLANE*RCS         
+      EPLANE=E1+DZ*EFZ100+DX*EFX100
+      VZPLANE=DCZ2*DSQRT(EPLANE)*CONST3*0.01D0
+      VYPLANE=DCY2*DSQRT(EPLANE)*CONST3*0.01D0
+      VXPLANE=DCX2*DSQRT(EPLANE)*CONST3*0.01D0
+      XTPL(IPLANE)=XTPL(IPLANE)+XPLANER
+      YTPL(IPLANE)=YTPL(IPLANE)+YPLANER
+      ZTPL(IPLANE)=ZTPL(IPLANE)+ZPLANER
+      XXTPL(IPLANE)=XXTPL(IPLANE)+XPLANER*XPLANER
+      YYTPL(IPLANE)=YYTPL(IPLANE)+YPLANER*YPLANER
+      ZZTPL(IPLANE)=ZZTPL(IPLANE)+ZPLANER*ZPLANER
+      YZTPL(IPLANE)=YZTPL(IPLANE)+YPLANER*ZPLANER
+      XZTPL(IPLANE)=XZTPL(IPLANE)+XPLANER*ZPLANER
+      XYTPL(IPLANE)=XYTPL(IPLANE)+XPLANER*YPLANER
+      ETPL(IPLANE)=ETPL(IPLANE)+EPLANE
+      TTPL(IPLANE)=TTPL(IPLANE)+ST+TIMLFT
+C ROTATE VELOCITIES 
+      VZPLNER=VZPLANE*RCS-VXPLANE*RSN
+      VYPLNER=VYPLANE
+      VXPLNER=VZPLANE*RSN+VXPLANE*RCS     
+      VZTPL(IPLANE)=VZTPL(IPLANE)+VZPLNER
+      VYTPL(IPLANE)=VYTPL(IPLANE)+VYPLNER
+      VXTPL(IPLANE)=VXTPL(IPLANE)+VXPLNER
+      NETPL(IPLANE)=NETPL(IPLANE)+1 
+      RETURN
+      END 
+      SUBROUTINE PTH
+      IMPLICIT REAL*8 (A-H,O-Z) 
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/ROTS/RCS,RSN,EFZ100,EFX100,F1,EOVBR                 
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/TPLOUTH/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),XZTPL(8),XYTPL(8),VZTPL(8),VYTPL(8),
+     /VXTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
+      COMMON/PTTOFH/RI(8),EPT(8),VZPT(8),VYPT(8),VXPT(8),TTEST(8)
+      DIMENSION ANTPL(8)
+C ------------------------------------------------
+C CALCULATES PULSED TOWNSEND COEFFICIENTS
+C-------------------------------------------------
+      ANTPL(1)=DFLOAT(NETPL(1))
+      RI(1)=(DLOG(ANTPL(1))-DLOG(DFLOAT(IPRIM)))/TSTEP
+      EPT(1)=ETPL(1)/ANTPL(1)
+      TTEST(1)=TTPL(1)/ANTPL(1)
+      VZPT(1)=1.0D+09*VZTPL(1)/ANTPL(1)
+      VYPT(1)=1.0D+09*VYTPL(1)/ANTPL(1)
+      VXPT(1)=1.0D+09*VXTPL(1)/ANTPL(1)
+      DO 10 I=2,ITFINAL
+      IF(NETPL(I).EQ.0) THEN
+       ITFINAL=I-1
+       GO TO 11
+      ENDIF
+      ANTPL(I)=DFLOAT(NETPL(I))      
+      RI(I)=(DLOG(ANTPL(I))-DLOG(ANTPL(I-1)))/TSTEP
+      EPT(I)=ETPL(I)/ANTPL(I)
+      TTEST(I)=TTPL(I)/ANTPL(I)
+      VZPT(I)=1.0D+09*VZTPL(I)/ANTPL(I)
+      VYPT(I)=1.0D+09*VYTPL(I)/ANTPL(I)
+      VXPT(I)=1.0D+09*VXTPL(I)/ANTPL(I)
+  10  CONTINUE
+  11  WRITE(6,900) ITFINAL
+ 900  FORMAT(2(/),' PULSED TOWNSEND RESULTS AT',I2,' SEQUENTIAL TIME PLA
+     /NES',/,'PLANE   (ION-ATT)FRQ.    ENERGY      WVZ       WVY       W
+     /VX  NO.OF ELECTRNS',/)   
+      DO 20 IPL=1,ITFINAL
+      WRITE(6,910) IPL,RI(IPL),EPT(IPL),VZPT(IPL),VYPT(IPL),VXPT(IPL),
+     /NETPL(IPL)
+ 910  FORMAT(1X,I2,4X,D12.4,4X,F7.2,4X,F6.1,4X,F6.1,4X,F6.1,4X,I8)
+  20  CONTINUE 
+      RETURN
+      END
+      SUBROUTINE TOFH
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/TPLOUTH/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),YZTPL(8),XZTPL(8),XYTPL(8),VZTPL(8),VYTPL(8),
+     /VXTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT 
+      COMMON/TOFHOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
+     /TOFWVY,TOFWVYER,TOFWVX,TOFWVXER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,
+     /TOFDYY,TOFDYYER,TOFDYZ,TOFDYZER,TOFDXY,TOFDXYER,TOFDXZ,TOFDXZER,
+     /TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,TOFWRX,TOFWRXER,RATTOF,RATOFER 
+      COMMON/PTTOFH/RI(8),EPT(8),VZPT(8),VYPT(8),VXPT(8),TTEST(8)
+      DIMENSION DZTF(8),DXTF(8),DYTF(8),DYZTF(8),DXYTF(8),DXZTF(8)
+      DIMENSION WRZ(8),WRY(8),WRX(8),ANTPL(8) 
+C----------------------------------------------------------
+C CALCULATES TIME OF FLIGHT COEFFICIENTS
+C---------------------------------------------
+      ANTPL(1)=DFLOAT(NETPL(1))
+      WRZ(1)=ZTPL(1)/(ANTPL(1)*TSTEP)
+      WRY(1)=YTPL(1)/(ANTPL(1)*TSTEP)
+      WRX(1)=XTPL(1)/(ANTPL(1)*TSTEP)
+      DZTF(1)=((ZZTPL(1)/ANTPL(1))-(ZTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DXTF(1)=((XXTPL(1)/ANTPL(1))-(XTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DYTF(1)=((YYTPL(1)/ANTPL(1))-(YTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
+      DYZTF(1)=((YZTPL(1)/ANTPL(1))-(YTPL(1)*ZTPL(1)/(ANTPL(1)**2)))/(2
+     /.0D0*TSTEP) 
+      DXZTF(1)=((XZTPL(1)/ANTPL(1))-(XTPL(1)*ZTPL(1)/(ANTPL(1)**2)))/(2
+     /.0D0*TSTEP) 
+      DXYTF(1)=((XYTPL(1)/ANTPL(1))-(XTPL(1)*YTPL(1)/(ANTPL(1)**2)))/(2
+     /.0D0*TSTEP) 
+      DO 10 I=2,ITFINAL
+      ANTPL(I)=DFLOAT(NETPL(I)) 
+      WRZ(I)=((ZTPL(I)/ANTPL(I))-(ZTPL(I-1)/ANTPL(I-1)))/TSTEP
+      WRY(I)=((YTPL(I)/ANTPL(I))-(YTPL(I-1)/ANTPL(I-1)))/TSTEP
+      WRX(I)=((XTPL(I)/ANTPL(I))-(XTPL(I-1)/ANTPL(I-1)))/TSTEP
+      DZTF(I)=((ZZTPL(I)/ANTPL(I))-(ZTPL(I)/ANTPL(I))**2-(ZZTPL(I-1)/ANT
+     /PL(I-1))+(ZTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DXTF(I)=((XXTPL(I)/ANTPL(I))-(XTPL(I)/ANTPL(I))**2-(XXTPL(I-1)/ANT
+     /PL(I-1))+(XTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DYTF(I)=((YYTPL(I)/ANTPL(I))-(YTPL(I)/ANTPL(I))**2-(YYTPL(I-1)/ANT
+     /PL(I-1))+(YTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
+      DYZTF(I)=((YZTPL(I)/ANTPL(I))-(YTPL(I)*ZTPL(I)/(ANTPL(I)**2))-(YZT
+     /PL(I-1)/ANTPL(I-1))+(YTPL(I-1)*ZTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
+     /TSTEP)
+      DXZTF(I)=((XZTPL(I)/ANTPL(I))-(XTPL(I)*ZTPL(I)/(ANTPL(I)**2))-(XZT
+     /PL(I-1)/ANTPL(I-1))+(XTPL(I-1)*ZTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
+     /TSTEP)
+      DXYTF(I)=((XYTPL(I)/ANTPL(I))-(XTPL(I)*YTPL(I)/(ANTPL(I)**2))-(XYT
+     /PL(I-1)/ANTPL(I-1))+(XTPL(I-1)*YTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
+     /TSTEP)
+  10  CONTINUE  
+      DO 15 I=1,ITFINAL
+      WRZ(I)=WRZ(I)*1.0D+09
+      WRY(I)=WRY(I)*1.0D+09
+      WRX(I)=WRX(I)*1.0D+09
+      DZTF(I)=DZTF(I)*1.0D+16
+      DXTF(I)=DXTF(I)*1.0D+16
+      DYTF(I)=DYTF(I)*1.0D+16
+      DYZTF(I)=DYZTF(I)*1.0D+16
+      DXZTF(I)=DXZTF(I)*1.0D+16
+      DXYTF(I)=DXYTF(I)*1.0D+16
+  15  CONTINUE
+      WRITE(6,900) ITFINAL
+ 900  FORMAT(2(/),' TIME OF FLIGHT RESULTS AT',I2,' SEQUENTIAL TIME PLAN
+     /ES',/,'PLANE    DZZ     DXX     DYY     DYZ     DXZ     DXY      W
+     /RZ     WRY     WRX',/)
+      DO 20 IPL=1,ITFINAL   
+      WRITE(6,910) IPL,DZTF(IPL),DXTF(IPL),DYTF(IPL),DYZTF(IPL),        
+     /DXZTF(IPL),DXYTF(IPL),WRZ(IPL),WRY(IPL),WRX(IPL)  
+ 910  FORMAT(1X,I2,2X,6F8.1,3F8.2)              
+  20  CONTINUE    
+      IF(NETPL(1).GT.NETPL(ITFINAL)) THEN
+C        NET ATTACHMENT TAKE RESULTS FROM PLANE 2
+       TOFENE=EPT(2)
+       TOFENER=100.0D0*DABS((EPT(2)-EPT(3))/(2.0D0*EPT(2)))
+       TOFWVZ=VZPT(2)
+       TOFWVZER=100.0D0*DABS((VZPT(2)-VZPT(3))/(2.0D0*VZPT(2))) 
+       TOFWVY=VYPT(2)
+       TOFWVYER=100.0D0*DABS((VYPT(2)-VYPT(3))/(2.0D0*VYPT(2))) 
+       TOFWVX=VXPT(2)
+       TOFWVXER=100.0D0*DABS((VXPT(2)-VXPT(3))/(2.0D0*VXPT(2)))
+       TOFDZZ=DZTF(2)
+       TOFDZZER=100.0D0*DABS((DZTF(2)-DZTF(3))/(2.0D0*DZTF(2)))
+       TOFDXX=DXTF(2)
+       TOFDXXER=100.0D0*DABS((DXTF(2)-DXTF(3))/(2.0D0*DXTF(2)))
+       TOFDYY=DYTF(2)
+       TOFDYYER=100.0D0*DABS((DYTF(2)-DYTF(3))/(2.0D0*DYTF(2)))
+       TOFDYZ=DYZTF(2)
+       TOFDYZER=100.0D0*DABS((DYZTF(2)-DYZTF(3))/(2.0D0*DYZTF(2)))
+       TOFDXZ=DXZTF(2)
+       TOFDXZER=100.0D0*DABS((DXZTF(2)-DXZTF(3))/(2.0D0*DXZTF(2)))
+       TOFDXY=DXYTF(2)
+       TOFDXYER=100.0D0*DABS((DXYTF(2)-DXYTF(3))/(2.0D0*DXYTF(2)))
+       TOFWRZ=WRZ(2)
+       TOFWRY=WRY(2)
+       TOFWRX=WRX(2)
+       TOFWRZER=100.0D0*DABS((WRZ(2)-WRZ(3))/(2.0D0*WRZ(2)))
+       TOFWRYER=100.0D0*DABS((WRY(2)-WRY(3))/(2.0D0*WRY(2))) 
+       TOFWRXER=100.0D0*DABS((WRX(2)-WRX(3))/(2.0D0*WRX(2)))
+        ANST2=DFLOAT(NETPL(2))
+        ANST3=DFLOAT(NETPL(3))
+        ANST4=ANST3-DSQRT(ANST3)
+        ANST5=DLOG(ANST2/ANST3)
+        ANST6=DLOG(ANST2/ANST4)
+        ANST7=ANST6/ANST5
+        ANST8=ANST7-1.0D0
+       IF(ATTOINT.EQ.-1.0D0) THEN
+C        NO IONISATION
+        RALPHA=0.0D0
+        RALPER=0.0D0
+        RATTOF=-RI(2)
+        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
+       ELSE
+        RALPHA=RI(2)/(1.0D0-ATTOINT)
+        RALPER=100.0D0*DSQRT(ANST8**2+AIOERT**2)
+        RATTOF=ATTOINT*RI(2)/(1.0D0-ATTOINT)
+        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
+       ENDIF 
+      ELSE
+C NET IONISATION TAKE RESULTS FROM PLANE ITFINAL
+       I1=ITFINAL
+       I2=ITFINAL-1  
+       TOFENE=EPT(I1)
+       TOFENER=100.0D0*DABS((EPT(I1)-EPT(I2))/(2.0D0*EPT(I1)))
+       TOFWVZ=VZPT(I1)
+       TOFWVZER=100.0D0*DABS((VZPT(I1)-VZPT(I2))/(2.0D0*VZPT(I1)))
+       TOFWVY=VYPT(I1)
+       TOFWVYER=100.0D0*DABS((VYPT(I1)-VYPT(I2))/(2.0D0*VYPT(I1)))
+       TOFWVX=VXPT(I1)
+       TOFWVXER=100.0D0*DABS((VXPT(I1)-VXPT(I2))/(2.0D0*VXPT(I1)))
+       TOFDZZ=DZTF(I1)
+       TOFDZZER=100.0D0*DABS((DZTF(I1)-DZTF(I2))/(2.0D0*DZTF(I1)))
+       TOFDXX=DXTF(I1)
+       TOFDXXER=100.0D0*DABS((DXTF(I1)-DXTF(I2))/(2.0D0*DXTF(I1)))
+       TOFDYY=DYTF(I1)
+       TOFDYYER=100.0D0*DABS((DYTF(I1)-DYTF(I2))/(2.0D0*DYTF(I1)))
+       TOFDYZ=DYZTF(I1)
+       TOFDYZER=100.0D0*DABS((DYZTF(I1)-DYZTF(I2))/(2.0D0*DYZTF(I1)))
+       TOFDXZ=DXZTF(I1)
+       TOFDXZER=100.0D0*DABS((DXZTF(I1)-DXZTF(I2))/(2.0D0*DXZTF(I1)))
+       TOFDXY=DXYTF(I1)
+       TOFDXYER=100.0D0*DABS((DXYTF(I1)-DXYTF(I2))/(2.0D0*DXYTF(I1)))
+       TOFWRZ=WRZ(I1)
+       TOFWRY=WRY(I1)
+       TOFWRX=WRX(I1)
+       TOFWRZER=100.0D0*DABS((WRZ(I1)-WRZ(I2))/(2.0D0*WRZ(I1)))
+       TOFWRYER=100.0D0*DABS((WRY(I1)-WRY(I2))/(2.0D0*WRY(I1)))
+       TOFWRXER=100.0D0*DABS((WRX(I1)-WRX(I2))/(2.0D0*WRX(I1)))
+       ATER=DABS((RI(I1)-RI(I2))/(2.0D0*RI(I1)))
+       RALPHA=RI(I1)/(1.0D0-ATTOINT)
+       RALPER=100.0D0*DSQRT(ATER**2+AIOERT**2)
+       RATTOF=ATTOINT*RI(I1)/(1.0D0-ATTOINT)
+       IF(ATTOINT.NE.0.0D0) THEN
+        RATOFER=100.0D0*DSQRT(ATER**2+ATTERT**2)
+       ELSE
+        RATOFER=0.0D0
+       ENDIF  
+      ENDIF
+      RETURN
+      END                
+      SUBROUTINE ALPCLCAT 
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
+      COMMON/TOFOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWV,TOFWVER,
+     /TOFDL,TOFDLER,TOFDT,TOFDTER,TOFWR,TOFWRER,RATTOF,RATOFER 
+      COMMON/VEL/WX,WY,WZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+C ---------------------------------------------------------------------      
+C  ESTIMATE TIME STEP FOR AVALANCHE SIMULATION IN TIME OF FLIGHT SIM.
+C  USES ESTIMATED GAIN OF 3.0 BETWEEN PLANES. 
+C  CALLS TOF AND PT SUBROUTINES AND UPDATES ALPHA AND ATT
+C  VERSION WITH BFIELD PARALLEL TO EFIELD 
+C ------------------------------------------------------------------
+      IMAX=NMAX/10000000 
+      IF(IMAX.LT.5) IMAX=5 
+      NMAX=IMAX*10000000
+      ALPHAST=0.85D0*DABS(ALPHA-ATT) 
+      VDST=WZ*1.D-5                                                 
+      TSTEP=DLOG(3.0D0)/(ALPHAST*VDST*1.0D5)
+      TSTEP=TSTEP*1.0D12
+      TFINAL=7.0D0*TSTEP
+      ITFINAL=7
+C CALC TIME OF FLIGHT AND PT 
+      WRITE(6,25)
+   25 FORMAT(/,2X,'SOLUTION FOR PULSED TOWNSEND AND TIME OF FLIGHT PARAM
+     /ETERS',/,'  ------------------------------------------------------
+     /--------') 
+      WRITE(6,26) TSTEP
+   26 FORMAT(1(/),'  TIME STEP BETWEEN SAMPLING PLANES =',D12.5,' PICOSE
+     /CS.',/)                     
+      CALL MONTEFTAT                            
+      CALL FRIEDLANDT 
+      CALL PT 
+      CALL TOF 
+      WRITE(6,27) RALPHA,RALPER,RATTOF,RATOFER
+   27 FORMAT(/,'PT IONISATION AND ATTACHMENT RATES *10**12/SEC',/,'ALPHA
+     /=',D10.3,' +- ',F6.2,' %      ATT=',D10.3,' +- ',F6.2,' %')    
+      WRITE(6,28) 
+   28 FORMAT(/,' TOF DIFFUSION')
+      WRITE(6,29) TOFDL,TOFDLER,TOFDT,TOFDTER 
+   29 FORMAT(/,'  DL=',F8.1,' +- ',F6.1,' %       DT=',F8.1,' +- ',F6.1,
+     /' %')     
+      WRITE(6,30)
+   30 FORMAT(/,' TOF DRIFT VELOCITY')
+      WRITE(6,31) TOFWR,TOFWRER   
+   31 FORMAT(/,'    WR=',F8.2,' +- ',F6.2,' %') 
+C CALCULATE TOWNSEND SST COEFICIENTS FROM TOF RESULTS
+      WRN=TOFWR*1.0D05
+      FC1=WRN/(2.0D0*TOFDL)
+      FC2=((RALPHA-RATTOF)*1.0D12)/TOFDL   
+      ALPZZ=FC1-DSQRT(FC1**2-FC2)            
+C---------------------------------------------------           
+C LOAD NEW ALPHA AND ATTACHMENT INTO COMMON BLOCKS
+C-----------------------------------------------
+      ALPATT=ALPHA-ATT
+      RATIO=ALPZZ/ALPATT
+      ALPHA=ALPHA*RATIO
+      ATT=ATT*RATIO  
+      WRITE(6,32) ALPHA,ALPER,ATT,ATTER
+  32  FORMAT(/,'TOWNSEND COEFICIENTS CALCULATED FROM TOF RESULTS:',2(/),
+     /'IONISATION RATE /CM.=',D11.4,' +-',F6.2,' %',/,'ATTACHMENT RATE /
+     /CM.=',D11.4,' +-',F6.2,' %',/)          
+C-----------------------------------------------      
+      RETURN                                                     
+      END                                                               
+      SUBROUTINE MONTEFTAT                                             
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
+      COMMON/LARGET/CF(6,4000,260),EIN(6,260),TCF(6,4000),IARRY(6,260),
+     /RGAS(6,260),IPN(6,260),WPL(6,260),IPLAST(6),ISIZE(6),
+     /PENFRA(6,3,260),TCFMAX(6)
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS
+      COMMON/THRM/AMGAS(6),VTMB(6),TCFMX,TCFMXG(6),ITHRM
+      COMMON/RANM/RNMX(6)
+      COMMON/IPT/XS(200),YS(200),ZS(200),TS(200),ES(200),
+     /DCX(200),DCY(200),DCZ(200),IPL(200)
+      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT 
+      COMMON/ANIST/PSCT(6,4000,260),ANGCT(6,4000,260),INDEX(6,260),NISO
+      DIMENSION EPRM(4000000),IESPECP(100)            
+C -------------------------------------------------------------------   
+C   CALCULATES COLLISION EVENTS AND UPDATES DIFFUSION AND VELOCITY.
+C   THIS ROUTINE HANDLES TERMINATIONS AT FIXED DRIFT TIMES.
+C   BFIELD PARALLEL TO EFIELD    
+C ------------------------------------------------------------------- 
+      S=0.0D0 
+      ST=0.0D0 
+      X=0.0D0
+      Y=0.0D0
+      Z=0.0D0 
+      ZTOT=0.0D0
+      ZTOTS=0.0D0
+      TTOT=0.0D0
+      TTOTS=0.0D0
+      SMALL=1.0D-20                                                     
+      TMAX1=0.0D0                                                       
+      RDUM=RSTART                                                       
+      E1=ESTART                                                         
+      CONST9=CONST3*0.01D0
+      CONST10=CONST9*CONST9
+      DO 25 I=1,300
+   25 TIME(I)=0.0D0
+      DO 26 I=1,5
+      DO 26 K=1,6
+   26 ICOLL(K,I)=0
+      DO 27 I=1,260
+      DO 27 K=1,6
+   27 ICOLN(K,I)=0
+      DO 28 I=1,4000
+   28 SPEC(I)=0.0D0            
+      DO 33 I=1,100
+   33 IESPECP(I)=0 
+      DO 34 I=1,8
+      ETPL(I)=0.0D0
+      XTPL(I)=0.0D0
+      YTPL(I)=0.0D0
+      ZTPL(I)=0.0D0
+      TTPL(I)=0.0D0
+      XXTPL(I)=0.0D0
+      YYTPL(I)=0.0D0
+      ZZTPL(I)=0.0D0
+      VZTPL(I)=0.0D0
+   34 NETPL(I)=0                                   
+      ID=0
+      N4000=4000
+      N300=300
+      N100=100
+      I100=0                                                            
+      NCOL=0                                                            
+      NNULL=0
+      NELEC=0
+      NEION=0
+      NMXADD=0
+      NPONT=0 
+      NCLUS=0
+      J1=1 
+      ZSTRT=0.0D0
+      TSSTRT=0.0D0 
+C GENERATE INITIAL RANDOM NUMBERS FOR MAXWELL BOLTZMAN
+      CALL GERJAN
+      IMBPT=0
+C
+C     INITIAL DIRECTION COSINES                                         
+      DCZ1=DCOS(THETA)                                                  
+      DCX1=DSIN(THETA)*DCOS(PHI)                                        
+      DCY1=DSIN(THETA)*DSIN(PHI) 
+C INITIAL VELOCITY
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT
+      CY1=DCY1*VTOT
+      CZ1=DCZ1*VTOT      
+      E100=E1
+      DCZ100=DCZ1
+      DCX100=DCX1
+      DCY100=DCY1                                       
+      BP=EFIELD*EFIELD*CONST1                                           
+      F1=EFIELD*CONST2                                                  
+      F2=EFIELD*CONST3
+      API=DACOS(-1.0D0)                                                 
+      F4=2.0D0*API
+      JPRINT=NMAX/10
+      IPRINT=0
+      ITER=0
+      IPLANE=0
+      IPRIM=0
+C  LOOP FOR NEW STARTING ELECTRONS 
+  544 IPRIM=IPRIM+1 
+      IF(IPRIM.GT.1) THEN
+C CHECK IF PROGRAM WILL EXCEED MAXIMUM NUMBER OF ITERATIONS 
+C IN THIS CYCLE IF SO OUTPUT CURRENT RESULTS. 
+       IF(ITER.GT.NMAX) THEN
+        IPRIM=IPRIM-1
+        GO TO 700      
+       ENDIF 
+       X=0.0D0
+       Y=0.0D0
+       Z=0.0D0
+       DCZ1=DCZ100
+       DCX1=DCX100
+       DCY1=DCY100
+       E1=E100
+       VTOT=CONST9*DSQRT(E1)
+       CX1=DCX1*VTOT
+       CY1=DCY1*VTOT
+       CZ1=DCZ1*VTOT
+       NCLUS=NCLUS+1
+       ST=0.0D0
+       TSSTRT=0.0D0
+       ZSTRT=0.0D0
+       IPLANE=0
+      ENDIF
+      IF(IPRIM.GT.4000000) THEN
+      WRITE(6,944) IPRIM
+ 944  FORMAT(/,2X,'PROGRAM STOPPED TOO MANY PRIMARIES IPRIM =',I7)
+      GO TO 700
+      ENDIF
+      EPRM(IPRIM)=E1
+      IDUM=DINT(E1)+1
+      IDUM=DMIN0(IDUM,N100)
+      IESPECP(IDUM)=IESPECP(IDUM)+1      
+C START OF LOOP FOR NEWLY CREATED ELECTRONS
+  555 TDASH=0.0D0
+      NELEC=NELEC+1
+      TSTOP=TSTEP+IPLANE*TSTEP       
+C MAIN LOOP                                                             
+    1 CONTINUE                                                          
+C     IF(ITER.GT.NMAX)  GO TO 315
+      R1=drand48(RDUM)
+      T=-DLOG(R1)/TCFMX+TDASH
+      TDASH=T
+      AP=DCZ1*F2*DSQRT(E1)
+  15  IF((T+ST).GE.TSTOP) THEN                     
+       IPLANE=IPLANE+1
+       TSTOP=TSTOP+TSTEP
+C STORE POSITION AND ENERGY AT TIME PLANE =IPLANE. 
+       CALL TPLANEAT(T,E1,CX1,CY1,DCZ1,AP,BP,EFIELD,IPLANE)
+C CHECK IF PASSED THROUGH MORE THAN ONE PLANE IN THIS STEP       
+       IF((T+ST).GE.TSTOP.AND.TSTOP.LE.TFINAL) GO TO 15
+       IF((T+ST).GE.TFINAL) THEN
+        ZTOT=ZTOT+Z     
+        TTOT=TTOT+ST
+        ZTOTS=ZTOTS+Z-ZSTRT      
+        TTOTS=TTOTS+ST-TSSTRT    
+        TSTOP=TSTEP
+C NO MORE ELECTRONS IN CASCADE TRY NEW PRIMARY ELECTRON
+        IF(NELEC.EQ.(NCLUS+1)) GO TO 544  
+C TAKE ELECTRONS FROM STORE 
+   20   X=XS(NPONT) 
+        Y=YS(NPONT) 
+        Z=ZS(NPONT) 
+        ST=TS(NPONT) 
+        E1=ES(NPONT) 
+        DCX1=DCX(NPONT) 
+        DCY1=DCY(NPONT) 
+        DCZ1=DCZ(NPONT)
+        VTOT=CONST9*DSQRT(E1)
+        CX1=DCX1*VTOT
+        CY1=DCY1*VTOT
+        CZ1=DCZ1*VTOT 
+        IPLANE=IPL(NPONT)   
+        NPONT=NPONT-1 
+        ZSTRT=Z 
+        TSSTRT=ST
+        GO TO 555
+       ENDIF              
+      ENDIF
+      E=E1+(AP+BP*T)*T
+      IF(E.LT.0.0D0) THEN
+       WRITE(6,913)ITER,E,E1,AP,BP,DCZ1 
+ 913  FORMAT(3X,' AFTER STORE ITER=',I10,' E=',D12.3,' E1=',D12.3,' AP='
+     /,D12.3,' BP=',D12.3,' DCZ1=',D12.3)       
+       E=0.001D0
+      ENDIF  
+      WBT=WB*T
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)
+      CONST6=DSQRT(E1/E)
+C FIND IDENTITY OF GAS FOR COLLISION
+      KGAS=0
+      IF(NGAS.EQ.1) THEN
+       R2=drand48(RDUM)
+       KGAS=1
+       GO TO 4
+      ENDIF
+      R2=drand48(RDUM)
+    3 KGAS=KGAS+1
+      IF(TCFMXG(KGAS).LT.R2) GO TO 3
+C CALCULATE ELECTRON VELOCITY VECTORS BEFORE COLLISION
+    4 CX2=CX1*COSWT-CY1*SINWT
+      CY2=CY1*COSWT+CX1*SINWT
+      VTOT=CONST9*DSQRT(E)
+      CZ2=VTOT*(DCZ1*CONST6+EFIELD*T*CONST5/DSQRT(E))
+C CALCULATE GAS VELOCITY VECTORS VGX,VGY,VGZ
+      IMBPT=IMBPT+1
+      IF(IMBPT.GT.6) THEN
+       CALL GERJAN
+        IMBPT=1
+      ENDIF
+      VGX=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGY=VTMB(KGAS)*RNMX(IMBPT)
+      IMBPT=IMBPT+1
+      VGZ=VTMB(KGAS)*RNMX(IMBPT)
+C CALCULATE ENERGY WITH STATIONARY GAS TARGET, EOK.
+      EOK=((CX2-VGX)**2+(CY2-VGY)**2+(CZ2-VGZ)**2)/CONST10
+      IE=DINT(EOK/ESTEP)+1                                             
+      IE=DMIN0(IE,N4000)                                               
+C                                                                       
+C     TEST FOR REAL OR NULL COLLISION                                   
+      R4=drand48(RDUM)                                         
+      TTEM=TCF(KGAS,IE)/TCFMAX(KGAS)                                   
+      IF(R4.LE.TTEM) GO TO 137
+      NNULL=NNULL+1                                                    
+      GO TO 1           
+  137 NCOL=NCOL+1
+C CALCULATE DIRECTION COSINES OF ELECTRON IN 0 KELVIN FRAME
+      CONST11=1.0D0/(CONST9*DSQRT(EOK))
+      DXCOM=(CX2-VGX)*CONST11
+      DYCOM=(CY2-VGY)*CONST11
+      DZCOM=(CZ2-VGZ)*CONST11                                       
+C                                                                       
+C  CALCULATE POSITIONS AT INSTANT BEFORE COLLISION
+C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.                    
+      T2=T*T
+      IF(T.GE.TMAX1) TMAX1=T
+      TDASH=0.0D0  
+      CONST7=CONST9*DSQRT(E1)                                           
+      A=T*CONST7                                                        
+      DX=(CX1*SINWT-CY1*(1.0D0-COSWT))/WB                               
+      X=X+DX           
+      DY=(CY1*SINWT+CX1*(1.0D0-COSWT))/WB                               
+      Y=Y+DY    
+      Z=Z+DCZ1*A+T2*F1
+      ST=ST+T
+      IT=DINT(T+1.0D0)                                              
+      IT=DMIN0(IT,N300)                                                
+      TIME(IT)=TIME(IT)+1.0D0  
+C ENERGY SPECTRUM IN 0 KELVIN FRAME                                 
+      SPEC(IE)=SPEC(IE)+1.0D0
+C --------------------------------------------------------------------- 
+C     DETERMINATION OF REAL COLLISION TYPE                              
+C --------------------------------------------------------------------- 
+      R2=drand48(RDUM)
+C FIND LOCATION WITHIN 4 UNITS IN COLLISION ARRAY
+      CALL SORTT(KGAS,I,R2,IE)                                          
+  140 I=I+1                                                             
+      IF(CF(KGAS,IE,I).LT.R2) GO TO 140                                 
+      S1=RGAS(KGAS,I)                                                   
+      EI=EIN(KGAS,I)
+      IF(EOK.LT.EI) THEN
+C FIX ENERGY LOSS SMALLER THAN INCIDENT ENERGY IF A BINING ERROR OCCURS.
+      EI=EOK-0.0001D0
+      ENDIF                                                          
+      IF(IPN(KGAS,I).EQ.0) GO TO 666
+C ATTACHMENT       
+      IF(IPN(KGAS,I).EQ.-1) THEN
+       NEION=NEION+1
+       IPT=IARRY(KGAS,I)
+       ID=ID+1
+       ITER=ITER+1
+       IPRINT=IPRINT+1
+       ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1
+       ICOLN(KGAS,I)=ICOLN(KGAS,I)+1 
+       IT=DINT(T+1.0D0)
+       IT=DMIN0(IT,N300)
+       TIME(IT)=TIME(IT)+1.0D0
+       ZTOT=ZTOT+Z
+       TTOT=TTOT+ST
+       ZTOTS=ZTOTS+Z-ZSTRT
+       TTOTS=TTOTS+ST-TSSTRT
+C  ELECTRON CAPTURED START NEW PRIMARY          
+       IF(NELEC.EQ.(NCLUS+1)) GO TO 544
+C ELECTRON CAPTURED TAKE NEXT ELECTRON FROM STORE       
+       GO TO 20
+      ENDIF                                                 
+      R9=drand48(RDUM)
+C     ESEC=R9*(EOK-EI)      
+C    USE OPAL PETERSON AND BEATY SPLITTING FACTOR.
+      ESEC=WPL(KGAS,I)*TAN(R9*ATAN((EOK-EI)/(2.0D0*WPL(KGAS,I))))     
+      EI=ESEC+EI 
+C STORE POSITION ,ENERGY, DIRECTION COSINES AND TIME OF GENERATION
+C OF IONISATION ELECTRON      
+      NCLUS=NCLUS+1
+      NPONT=NPONT+1
+      NMXADD=MAX(NPONT,NMXADD)
+      IF(NPONT.GT.200) THEN 
+      WRITE(6,546) NPONT,ITER
+ 546  FORMAT(2X,' PROGRAM STOPPED . NPONT=',I4,' ITER=',I10)
+      STOP
+      ENDIF     
+      XS(NPONT)=X       
+      YS(NPONT)=Y
+      ZS(NPONT)=Z
+      TS(NPONT)=ST
+      ES(NPONT)=ESEC
+C RANDOMISE SECONDARY ELECTRON DIRECTION
+      R3=drand48(RDUM)
+      F3=1.0D0-2.0D0*R3
+      THETA0=DACOS(F3)
+      F6=DCOS(THETA0)
+      F5=DSIN(THETA0)
+      R4=drand48(rdum)
+      PHI0=F4*R4
+      F8=DSIN(PHI0)
+      F9=DCOS(PHI0)               
+      DCX(NPONT)=F9*F5
+      DCY(NPONT)=F8*F5
+      DCZ(NPONT)=F6     
+      IPL(NPONT)=IPLANE 
+C                                                                       
+C  GENERATE SCATTERING ANGLES AND UPDATE  LABORATORY COSINES AFTER      
+C   COLLISION ALSO UPDATE ENERGY OF ELECTRON.                           
+C
+  666 IPT=IARRY(KGAS,I)
+      ID=ID+1    
+      ITER=ITER+1
+      IPRINT=IPRINT+1                                                   
+      ICOLL(KGAS,IPT)=ICOLL(KGAS,IPT)+1 
+      ICOLN(KGAS,I)=ICOLN(KGAS,I)+1   
+C IF EXCITATION THEN ADD PROBABILITY ,PENFRA(KGAS,1,I),OF TRANSFER TO 
+C GIVE IONISATION OF THE OTHER GASES IN THE MIXTURE
+      IF(IPEN.EQ.0) GO TO 5
+      IF(PENFRA(KGAS,1,I).NE.0.0) THEN
+       RAN=drand48(RDUM)
+       IF(RAN.GT.PENFRA(KGAS,1,I)) GO TO 5
+       NCLUS=NCLUS+1
+       NPONT=NPONT+1
+       IF(NPONT.GT.200) THEN
+        WRITE(6,546) NPONT,ITER
+        STOP
+       ENDIF
+C ENTER HERE POSSIBLE DELOCALISATION LENGTH FOR PENNING TRANSFER
+       IF(PENFRA(KGAS,2,I).EQ.0.0) THEN
+        XS(NPONT)=X
+        YS(NPONT)=Y
+        ZS(NPONT)=Z
+        GO TO 667
+       ENDIF    
+       ASIGN=1.0
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       XS(NPONT)=X-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       YS(NPONT)=Y-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+       RAN=drand48(RDUM)
+       RAN1=drand48(RDUM)
+       IF(RAN1.LT.0.5) ASIGN=-ASIGN
+       ZS(NPONT)=Z-DLOG(RAN)*PENFRA(KGAS,2,I)*ASIGN
+C ENTER POSSIBLE PENNING TRANSFER TIME
+  667  TPEN=ST
+       IF(PENFRA(KGAS,3,I).EQ.0.0) GO TO 668
+       RAN=drand48(RDUM)
+       TPEN=ST-DLOG(RAN)*PENFRA(KGAS,3,I)
+  668  TS(NPONT)=TPEN
+       ES(NPONT)=1.0
+       DCX(NPONT)=DCX1
+       DCY(NPONT)=DCY1
+       DCZ(NPONT)=DCZ1
+C FIND LAST TIME PLANE BEFORE TPEN
+       TSTOP1=0.0
+       IPLANE1=0
+       DO 669 KDUM=1,ITFINAL
+       TSTOP1=TSTEP+TSTOP1
+       IF(TPEN.LT.TSTOP1) GO TO 670
+       IPLANE1=IPLANE1+1
+  669  CONTINUE
+C PENNING TRANSFER OCCURS AFTER FINAL TIME PLANE. CLEAR ENTRY
+       NPONT=NPONT-1
+       NCLUS=NCLUS-1
+       GO TO 5
+  670  IPL(NPONT)=IPLANE1         
+      ENDIF                                   
+    5 S2=(S1*S1)/(S1-1.0D0) 
+C ANISOTROPIC SCATTERING
+      R3=drand48(RDUM) 
+      IF(INDEX(KGAS,I).EQ.1) THEN
+       R31=drand48(RDUM)
+       F3=1.0D0-R3*ANGCT(KGAS,IE,I)       
+       IF(R31.GT.PSCT(KGAS,IE,I)) F3=-F3
+      ELSE IF(INDEX(KGAS,I).EQ.2) THEN
+       EPSI=PSCT(KGAS,IE,I)
+       F3=1.0D0-(2.0D0*R3*(1.0D0-EPSI)/(1.0D0+EPSI*(1.0D0-2.0D0*R3)))
+      ELSE
+C ISOTROPIC SCATTERING                                                
+       F3=1.0D0-2.0D0*R3  
+      ENDIF
+      THETA0=DACOS(F3)                                                  
+      R4=drand48(RDUM)
+      PHI0=F4*R4                                                        
+      F8=DSIN(PHI0)                                                     
+      F9=DCOS(PHI0)
+      ARG1=1.0D0-S1*EI/EOK                                              
+      ARG1=DMAX1(ARG1,SMALL)                                            
+      D=1.0D0-F3*DSQRT(ARG1)                                            
+      E1=EOK*(1.0D0-EI/(S1*EOK)-2.0D0*D/S2) 
+      E1=DMAX1(E1,SMALL)                                                
+      Q=DSQRT((EOK/E1)*ARG1)/S1                                         
+      Q=DMIN1(Q,1.0D0)                                                  
+      THETA=DASIN(Q*DSIN(THETA0))                                       
+      F6=DCOS(THETA)                                                    
+      U=(S1-1.0D0)*(S1-1.0D0)/ARG1                                      
+      CSQD=F3*F3                                                        
+      IF(F3.LT.0.0D0.AND.CSQD.GT.U) F6=-1.0D0*F6                        
+      F5=DSIN(THETA)                                                    
+      DZCOM=DMIN1(DZCOM,1.0D0)                                          
+      ARGZ=DSQRT(DXCOM*DXCOM+DYCOM*DYCOM)
+      IF(ARGZ.EQ.0.0D0) THEN
+       DCZ1=F6         
+       DCX1=F9*F5                             
+       DCY1=F8*F5 
+       GO TO 190
+      ENDIF                                            
+      DCZ1=DZCOM*F6+ARGZ*F5*F8                                         
+      DCY1=DYCOM*F6+(F5/ARGZ)*(DXCOM*F9-DYCOM*DZCOM*F8)                 
+      DCX1=DXCOM*F6-(F5/ARGZ)*(DYCOM*F9+DXCOM*DZCOM*F8) 
+  190 CONTINUE  
+C TRANSFORM VELOCITY VECTORS TO LAB FRAME
+      VTOT=CONST9*DSQRT(E1)
+      CX1=DCX1*VTOT+VGX
+      CY1=DCY1*VTOT+VGY
+      CZ1=DCZ1*VTOT+VGZ
+C CALCULATE ENERGY AND DIRECTION IN LAB FRAME
+      E1=(CX1*CX1+CY1*CY1+CZ1*CZ1)/CONST10
+      CONST11=1.0D0/(CONST9*DSQRT(E1))
+      DCX1=CX1*CONST11
+      DCY1=CY1*CONST11
+      DCZ1=CZ1*CONST11
+C STORE DIRECTION COSINES AND ENERGY AFTER N COLLISIONS
+C FOR LATER REUSE IN PRIMARY GENERATION
+      I100=I100+1
+      IF(I100.EQ.200) THEN
+       DCZ100=DCZ1
+       DCX100=DCX1        
+       DCY100=DCY1 
+       E100=E1
+       I100=0
+      ENDIF  
+      IF(IPRINT.GT.JPRINT) GO TO 200
+      GO TO 1                                    
+C    INTERMEDIATE PRINTOUT                       
+ 200  IPRINT=0 
+      W=ZTOTS/TTOTS                          
+      W=W*1.0D+09                                                       
+      JCT=ID/100000
+C     IF(J1.EQ.1) WRITE(6,201)                                         
+C 201 FORMAT(/,7X,'INTERMEDIATE OUTPUT',/,'    VEL      POS        TIME 
+C    /       COUNT    ')                  
+C     WRITE(6,202) W,ZTOTS,TTOTS,JCT   
+C 202 FORMAT(1X,F8.3,2(1X,D10.3),4X,I6)                 
+      J1=J1+1            
+      GO TO 1
+C  MAIN LOOP END                                                  
+  700 XID=DFLOAT(ID)
+      IF(NELEC.GT.IPRIM) THEN
+       ANEION=DFLOAT(NEION)
+       ANBT=DFLOAT(NELEC-IPRIM)
+       ATTOINT=ANEION/ANBT
+       ATTERT=DSQRT(ANEION)/ANEION
+       AIOERT=DSQRT(ANBT)/ANBT
+      ELSE
+       ANEION=DFLOAT(NEION) 
+       ATTOINT=-1.0D0
+       ATTERT=DSQRT(ANEION)/ANEION
+      ENDIF
+      JCT=ID/100000  
+      IF(J1.EQ.1) THEN
+      WRITE(6,940) NCLUS,ITER
+  940 FORMAT(2(/),' PROGRAM STOPPED  (TOO FEW COLLISIONS), DECREASE THE 
+     /ESTIMATED ALPHA.  NCLUS = ',I7,'  ITER =',I9)      
+      STOP
+      ENDIF
+      WRITE(6,878) NELEC,NEION,IPRIM
+ 878  FORMAT(/,' TOTAL NO OF ELECTRONS=',I8,/,' TOTAL NO OF NEG. IONS=',
+     /I8,/,' TOTAL NO OF PRIMARIES=',I8)  
+      EPRMBAR=0.0D0
+      E2PRM=0.0D0
+      IF(IPRIM.EQ.1) RETURN      
+      DO 310 I=1,IPRIM
+      E2PRM=E2PRM+EPRM(I)*EPRM(I)
+ 310  EPRMBAR=EPRMBAR+EPRM(I)
+      EBAR=EPRMBAR/IPRIM
+      EERR=DSQRT(E2PRM/IPRIM-EBAR**2)
+      WRITE(6,836) EBAR,EERR
+ 836  FORMAT(/,2X,'AVERAGE ENERGY OF PRIMARY ELECTRON =',F10.3,' EV.',/,
+     /'   ENERGY SPREAD OF PRIMARY ELECTRON =',F10.3,' EV.')
+C     WRITE(6,835) (IESPECP(J),J=1,100)
+C835  FORMAT(/,2X,'ENERGY SPECTRUM OF PRIMARY ELECTRONS IN 1 EV. BINS',/
+C    /,10(2X,10I5,/))
+      RETURN               
+  315 IF(ITER.GT.NMAX) THEN
+       WRITE(6,991) ITER,NMAX,NPONT,NELEC,IPRIM,NMXADD
+ 991   FORMAT(2(/),' PROGRAM STOPPED.  ITER =',I10,'    NMAX =',I10,/,
+     /' NPONT=',I4,' NELEC=',I8,' IPRIM=',I4,' NMXADD=',I3)
+       STOP
+      ENDIF                                                             
+      RETURN                                                            
+      END
+      SUBROUTINE TPLANEAT(T,E1,CX1,CY1,DCZ1,AP,BP,EFLD,IPLANE)
+      IMPLICIT REAL*8 (A-H,O-Z)  
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
+      COMMON/BFLD/EOVB,WB,BTHETA,BMAG
+      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
+      COMMON/OUTPTT/TIME(300),ICOLL(6,5),SPEC(4000),TMAX1,
+     /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(6,260)
+      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
+     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT 
+C-----------------------------------------------------------------------
+C STORES POSITION, TIME AND ENERGY AND SUMS REQUIRED
+C TO CALCULATE DEVIATIONS AND MEANS AT PLANE =IPLANE 
+C-----------------------------------------------------------------------
+      TIMESP=IPLANE*TSTEP
+C CALC TIME LEFT TO ARRIVE AT PLANE
+      TIMLFT=TIMESP-ST
+      T2LFT=TIMLFT*TIMLFT
+      A=AP*TIMLFT
+      B=BP*T2LFT 
+      EPLANE=E1+A+B
+      WBT=WB*TIMLFT
+      COSWT=DCOS(WBT)
+      SINWT=DSIN(WBT)                      
+      CONST6=DSQRT(E1/EPLANE)         
+      DCZ2=DCZ1*CONST6+EFLD*TIMLFT*CONST5/DSQRT(EPLANE)
+      XPLANE=X+(CX1*SINWT-CY1*(1.0D0-COSWT))/WB   
+      YPLANE=Y+(CY1*SINWT+CX1*(1.0D0-COSWT))/WB      
+      ZPLANE=Z+DCZ1*TIMLFT*DSQRT(E1)*CONST3*0.01D0+T2LFT*EFLD*CONST2
+      VZPLANE=DCZ2*DSQRT(EPLANE)*CONST3*0.01D0
+      XTPL(IPLANE)=XTPL(IPLANE)+XPLANE
+      YTPL(IPLANE)=YTPL(IPLANE)+YPLANE
+      ZTPL(IPLANE)=ZTPL(IPLANE)+ZPLANE
+      XXTPL(IPLANE)=XXTPL(IPLANE)+XPLANE*XPLANE
+      YYTPL(IPLANE)=YYTPL(IPLANE)+YPLANE*YPLANE
+      ZZTPL(IPLANE)=ZZTPL(IPLANE)+ZPLANE*ZPLANE
+      ETPL(IPLANE)=ETPL(IPLANE)+EPLANE
+      TTPL(IPLANE)=TTPL(IPLANE)+ST+TIMLFT
+      VZTPL(IPLANE)=VZTPL(IPLANE)+VZPLANE
+      NETPL(IPLANE)=NETPL(IPLANE)+1 
+      RETURN
+      END
+      SUBROUTINE MIXER                                                  
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)              
+      COMMON/GASN/NGASN(6)                                    
+      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(250,4000),
+     /QIN2(250,4000),QIN3(250,4000),QIN4(250,4000),QIN5(250,4000),
+     /QIN6(250,4000),QSATT(4000)             
+      COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),
+     /QINEL(4000),QEL(4000)                                          
+      COMMON/MIX3/NIN1,NIN2,NIN3,NIN4,NIN5,NIN6,LION(6),LIN1(250),
+     /LIN2(250),LIN3(250),LIN4(250),LIN5(250),LIN6(250),ALION(6),
+     /ALIN1(250),ALIN2(250),ALIN3(250),ALIN4(250),ALIN5(250),ALIN6(250)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
+     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512),TCFMAX(8)         
+      COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO
+      COMMON/FRED/FCION(4000),FCATT(4000)
+      COMMON/MRATIO/VAN1,VAN2,VAN3,VAN4,VAN5,VAN6,VAN
+      COMMON/NAMES/NAMEG(6)                               
+      COMMON/SCRIP/DSCRPT(512)                             
+      CHARACTER*25 NAMEG,NAME1,NAME2,NAME3,NAME4,NAME5,NAME6
+      CHARACTER*50 DSCRPT,SCRP1(260),SCRP2(260),SCRP3(260),SCRP4(260),
+     /SCRP5(260),SCRP6(260)                            
+      DIMENSION Q1(6,4000),Q2(6,4000),Q3(6,4000),Q4(6,4000),
+     /Q5(6,4000),Q6(6,4000)
+      DIMENSION E1(6),E2(6),E3(6),E4(6),E5(6),E6(6),EI1(250),EI2(250),
+     /EI3(250),EI4(250),EI5(250),EI6(250)
+      DIMENSION QQROT(4000),QDROT(4000),QATT(6,4000),EION(6)       
+      DIMENSION PEQEL1(6,4000),PEQEL2(6,4000),PEQEL3(6,4000),
+     /PEQEL4(6,4000),PEQEL5(6,4000),PEQEL6(6,4000)
+      DIMENSION PEQIN1(250,4000),PEQIN2(250,4000),PEQIN3(250,4000),  
+     /PEQIN4(250,4000),PEQIN5(250,4000),PEQIN6(250,4000)
+      DIMENSION PENFRA1(3,250),PENFRA2(3,250),PENFRA3(3,250),
+     /PENFRA4(3,250),PENFRA5(3,250),PENFRA6(3,250)
+      DIMENSION KIN1(250),KIN2(250),KIN3(250),KIN4(250),KIN5(250),
+     /KIN6(250)
+      DIMENSION KEL1(6),KEL2(6),KEL3(6),KEL4(6),KEL5(6),KEL6(6)
+      DIMENSION EION1(8),EION2(8),EION3(8),EION4(8),EION5(8),EION6(8)
+      DIMENSION QION1(8,4000),QION2(8,4000),QION3(8,4000),QION4(8,4000),
+     /QION5(8,4000),QION6(8,4000)
+      DIMENSION PEQION1(8,4000),PEQION2(8,4000),PEQION3(8,4000),
+     /PEQION4(8,4000),PEQION5(8,4000),PEQION6(8,4000)
+C                                                                       
+C  ---------------------------------------------------------------------
+C                                                                       
+C     SUBROUTINE FILLS ARRAYS OF COLLISION FREQUENCY              
+C     CAN HAVE A MIXTURE OF UP TO 6 GASES                               
+C                                                                       
+C                                                                       
+C  ---------------------------------------------------------------------
+C                                                             
+      NISO=0
+      NIN1=0                                                            
+      NIN2=0                                                            
+      NIN3=0                                                            
+      NIN4=0
+      NIN5=0
+      NIN6=0
+      NION1=0
+      NION2=0
+      NION3=0
+      NION4=0
+      NION5=0
+      NION6=0
+      N4000=4000
+      NONE=1                                                     
+      DO 2 J=1,6  
+      NAMEG(J)='-------------------------'                              
+      KEL1(J)=0
+      KEL2(J)=0
+      KEL3(J)=0
+      KEL4(J)=0
+      KEL5(J)=0
+      KEL6(J)=0                       
+      DO 1 I=1,4000                                                    
+      Q1(J,I)=0.0D0                                                     
+      Q2(J,I)=0.0D0                                                     
+      Q3(J,I)=0.0D0                                                     
+      Q4(J,I)=0.0D0
+      Q5(J,I)=0.0D0
+      Q6(J,I)=0.0D0                     
+    1 CONTINUE                                                          
+      E1(J)=0.0D0                                                       
+      E2(J)=0.0D0                                                       
+      E3(J)=0.0D0                                                       
+      E4(J)=0.0D0 
+      E5(J)=0.0D0
+    2 E6(J)=0.0D0
+      DO 222 J=1,8
+      EION1(J)=0.0D0
+      EION2(J)=0.0D0
+      EION3(J)=0.0D0
+      EION4(J)=0.0D0
+      EION5(J)=0.0D0
+      EION6(J)=0.0D0
+      DO 222 I=1,4000
+      QION1(J,I)=0.0D0
+      QION2(J,I)=0.0D0
+      QION3(J,I)=0.0D0
+      QION4(J,I)=0.0D0
+      QION5(J,I)=0.0D0
+      QION6(J,I)=0.0D0
+  222 CONTINUE
+      ESTEP=EFINAL/DFLOAT(NSTEP)
+      EHALF=ESTEP/2.0D0
+      E(1)=EHALF
+      DO 3 I=2,4000
+      AJ=DFLOAT(I-1)
+      E(I)=EHALF+ESTEP*AJ
+    3 EROOT(I)=DSQRT(E(I))
+      EROOT(1)=DSQRT(EHALF)                   
+      DO 4 I=1,250
+      KIN1(I)=0
+      KIN2(I)=0
+      KIN3(I)=0
+      KIN4(I)=0
+      KIN5(I)=0
+    4 KIN6(I)=0
+      DO 6 I=1,512 
+    6 INDEX(I)=0
+      DO 7 I=1,8
+    7 TCFMAX(I)=0.0D0                                               
+C                                                                       
+C   CALL GAS CROSS-SECTIONS 
+      CALL GASMIX(NGASN(1),Q1,QIN1,NIN1,E1,EI1,NAME1,VIRIAL1,EB1,
+     /PEQEL1,PEQIN1,PENFRA1,KEL1,KIN1,QION1,PEQION1,EION1,NION1,SCRP1) 
+      IF(NGAS.EQ.1) GO TO 10 
+      CALL GASMIX(NGASN(2),Q2,QIN2,NIN2,E2,EI2,NAME2,VIRIAL2,EB2,
+     /PEQEL2,PEQIN2,PENFRA2,KEL2,KIN2,QION2,PEQION2,EION2,NION2,SCRP2)
+      IF(NGAS.EQ.2) GO TO 10 
+      CALL GASMIX(NGASN(3),Q3,QIN3,NIN3,E3,EI3,NAME3,VIRIAL3,EB3,
+     /PEQEL3,PEQIN3,PENFRA3,KEL3,KIN3,QION3,PEQION3,EION3,NION3,SCRP3)
+      IF(NGAS.EQ.3) GO TO 10 
+      CALL GASMIX(NGASN(4),Q4,QIN4,NIN4,E4,EI4,NAME4,VIRIAL4,EB4,
+     /PEQEL4,PEQIN4,PENFRA4,KEL4,KIN4,QION4,PEQION4,EION4,NION4,SCRP4)
+      IF(NGAS.EQ.4) GO TO 10 
+      CALL GASMIX(NGASN(5),Q5,QIN5,NIN5,E5,EI5,NAME5,VIRIAL5,EB5,
+     /PEQEL5,PEQIN5,PENFRA5,KEL5,KIN5,QION5,PEQION5,EION5,NION5,SCRP5)
+      IF(NGAS.EQ.5) GO TO 10 
+      CALL GASMIX(NGASN(6),Q6,QIN6,NIN6,E6,EI6,NAME6,VIRIAL6,EB6,
+     /PEQEL6,PEQIN6,PENFRA6,KEL6,KIN6,QION6,PEQION6,EION6,NION6,SCRP6)
+   10 CONTINUE                                                          
+C ---------------------------------------------------------------       
+C  CORRECTION OF NUMBER DENSITY DUE TO VIRIAL COEFFICIENT               
+C  CAN BE PROGRAMMED HERE NOT YET IMPLEMENTED.                          
+C-----------------------------------------------------------------
+C-----------------------------------------------------------------      
+C     CALCULATION OF COLLISION FREQUENCIES FOR AN ARRAY OF              
+C     ELECTRON ENERGIES IN THE RANGE ZERO TO EFINAL                     
+C                                                                       
+C     L=5*N-4    ELASTIC NTH GAS                                      
+C     L=5*N-3    IONISATION NTH GAS                                     
+C     L=5*N-2    ATTACHMENT NTH GAS                                     
+C     L=5*N-1    INELASTIC NTH GAS    
+C     L=5*N      SUPERELASTIC NTH GAS                                   
+C---------------------------------------------------------------   
+      DO 700 IE=1,4000  
+      FCION(IE)=0.0D0
+      FCATT(IE)=0.0D0
+      NP=1                                                              
+      CF(IE,NP)=Q1(2,IE)*VAN1
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0    
+      INDEX(NP)=0 
+C    ELASTIC ANG 
+      IF(KEL1(2).EQ.1) THEN
+       PSCT1=PEQEL1(2,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2  
+       INDEX(NP)=1   
+      ENDIF
+      IF(KEL1(2).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL1(2,IE)
+       INDEX(NP)=2
+      ENDIF
+C 
+      IF(IE.GT.1) GO TO 12                                   
+      RGAS1=1.0D0+E1(2)/2.0D0                                           
+      RGAS(NP)=RGAS1                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=0 
+      L=1                                                      
+      IARRY(NP)=L 
+      DSCRPT(NP)=SCRP1(2)  
+      NAMEG(1)=NAME1  
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0 
+C                                             
+   12 IF(EFINAL.LT.E1(3)) GO TO 30   
+      IF(NION1.GT.1) GO TO 20                                   
+      NP=NP+1   
+      CF(IE,NP)=Q1(3,IE)*VAN1
+      FCION(IE)=FCION(IE)+CF(IE,NP) 
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C  
+      IF(KEL1(3).EQ.1) THEN
+       PSCT1=PEQEL1(3,IE) 
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL1(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL1(3,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 30                                     
+      RGAS(NP)=RGAS1                                                    
+      EIN(NP)=E1(3)/RGAS1
+      WPL(NP)=EB1                                                
+      IPN(NP)=1 
+      L=2                                                      
+      IARRY(NP)=L 
+      DSCRPT(NP)=SCRP1(3)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0 
+      GO TO 30
+   20 DO 25 KION=1,NION1
+      NP=NP+1
+      CF(IE,NP)=QION1(KION,IE)*VAN1
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL1(3).EQ.1) THEN
+       PSCT1=PEQION1(KION,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL1(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQION1(KION,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 25
+      RGAS(NP)=RGAS1
+      EIN(NP)=EION1(KION)/RGAS1
+      WPL(NP)=EB1
+      IPN(NP)=1
+      L=2
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP1(2+KION)
+      PENFRA(1,NP)=0.0D0
+      PENFRA(2,NP)=0.0D0
+      PENFRA(3,NP)=0.0D0
+   25 CONTINUE
+   30 IF(EFINAL.LT.E1(4)) GO TO 40                                      
+      NP=NP+1                                                           
+      CF(IE,NP)=Q1(4,IE)*VAN1
+      FCATT(IE)=FCATT(IE)+CF(IE,NP) 
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      IF(IE.GT.1) GO TO 40
+      INDEX(NP)=0                                     
+      RGAS(NP)=RGAS1                                                   
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=-1              
+      L=3                                           
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP1(3+NION1)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0
+   40 IF(NIN1.EQ.0) GO TO 60                                           
+      DO 50 J=1,NIN1
+      NP=NP+1                                                           
+      CF(IE,NP)=QIN1(J,IE)*VAN1
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KIN1(J).EQ.1) THEN   
+       PSCT1=PEQIN1(J,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1   
+      ENDIF
+      IF(KIN1(J).EQ.2) THEN
+       PSCT(IE,NP)=PEQIN1(J,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 50                                     
+      RGAS(NP)=RGAS1                                                    
+      EIN(NP)=EI1(J)/RGAS1
+      L=4
+      IF(EI1(J).LT.0.0D0) L=5                                           
+      IPN(NP)=0  
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP1(5+NION1+J)
+      PENFRA(1,NP)=PENFRA1(1,J)
+      PENFRA(2,NP)=PENFRA1(2,J)*1.D-16/DSQRT(3.0D0)
+      PENFRA(3,NP)=PENFRA1(3,J)
+   50 CONTINUE                 
+C                                       
+   60 IF(NGAS.EQ.1) GO TO 600
+      NP=NP+1                                                           
+      CF(IE,NP)=Q2(2,IE)*VAN2
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL2(2).EQ.1) THEN
+       PSCT1=PEQEL2(2,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL2(2).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL2(2,IE)
+       INDEX(NP)=2
+      ENDIF 
+C
+      IF(IE.GT.1) GO TO 62                                     
+      RGAS2=1.0D0+E2(2)/2.0D0                                           
+      RGAS(NP)=RGAS2                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=0
+      L=6                                                          
+      IARRY(NP)=L      
+      DSCRPT(NP)=SCRP2(2)  
+      NAMEG(2)=NAME2 
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+C                                       
+   62 IF(EFINAL.LT.E2(3)) GO TO 130
+      IF(NION2.GT.1) GO TO 70                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q2(3,IE)*VAN2
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL2(3).EQ.1) THEN
+       PSCT1=PEQEL2(3,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL2(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL2(3,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 130                                      
+      RGAS(NP)=RGAS2                                                    
+      EIN(NP)=E2(3)/RGAS2 
+      WPL(NP)=EB2                                               
+      IPN(NP)=1  
+      L=7                                                        
+      IARRY(NP)=L      
+      DSCRPT(NP)=SCRP2(3)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0       
+      GO TO 130
+   70 DO 80 KION=1,NION2
+      NP=NP+1
+      CF(IE,NP)=QION2(KION,IE)*VAN2
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL2(3).EQ.1) THEN
+       PSCT1=PEQION2(KION,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL2(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQION2(KION,IE)
+       INDEX(NP)=2
+      ENDIF       
+C
+      IF(IE.GT.1) GO TO 80
+      RGAS(NP)=RGAS2
+      EIN(NP)=EION2(KION)/RGAS2
+      WPL(NP)=EB2
+      IPN(NP)=1
+      L=7
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP2(2+KION)
+      PENFRA(1,NP)=0.0D0
+      PENFRA(2,NP)=0.0D0
+      PENFRA(3,NP)=0.0D0
+   80 CONTINUE                      
+  130 IF(EFINAL.LT.E2(4)) GO TO 140                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q2(4,IE)*VAN2
+      FCATT(IE)=FCATT(IE)+CF(IE,NP)  
+      IF(IE.GT.1) GO TO 140 
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0                                  
+      RGAS(NP)=RGAS2                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=-1            
+      L=8                                              
+      IARRY(NP)=L      
+      DSCRPT(NP)=SCRP2(3+NION2)  
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0                                             
+  140 IF(NIN2.EQ.0) GO TO 160                                           
+      DO 150 J=1,NIN2
+      NP=NP+1                                                           
+      CF(IE,NP)=QIN2(J,IE)*VAN2
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KIN2(J).EQ.1) THEN
+       PSCT1=PEQIN2(J,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      IF(KIN2(J).EQ.2) THEN
+       PSCT(IE,NP)=PEQIN2(J,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      ENDIF
+      IF(IE.GT.1) GO TO 150                                    
+      RGAS(NP)=RGAS2                                                    
+      EIN(NP)=EI2(J)/RGAS2
+      L=9 
+      IF(EI2(J).LT.0.0D0) L=10                                          
+      IPN(NP)=0         
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP2(5+NION2+J)
+      PENFRA(1,NP)=PENFRA2(1,J)
+      PENFRA(2,NP)=PENFRA2(2,J)*1.D-6/DSQRT(3.0D0)
+      PENFRA(3,NP)=PENFRA2(3,J)
+  150 CONTINUE                 
+C                                       
+  160 IF(NGAS.EQ.2) GO TO 600
+      NP=NP+1                                                           
+      CF(IE,NP)=Q3(2,IE)*VAN3
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C       
+      IF(KEL3(2).EQ.1) THEN
+       PSCT1=PEQEL3(2,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF 
+      IF(KEL3(2).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL3(2,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 162                                     
+      RGAS3=1.0D0+E3(2)/2.0D0                                           
+      RGAS(NP)=RGAS3                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=0  
+      L=11                                                        
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP3(2)
+      NAMEG(3)=NAME3 
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0                                                 
+  162 IF(EFINAL.LT.E3(3)) GO TO 230
+      IF(NION3.GT.1) GO TO 170                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q3(3,IE)*VAN3
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL3(3).EQ.1) THEN
+       PSCT1=PEQEL3(3,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL3(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL3(3,IE)
+       INDEX(NP)=2
+      ENDIF 
+C 
+      IF(IE.GT.1) GO TO 230                                            
+      RGAS(NP)=RGAS3                                                    
+      EIN(NP)=E3(3)/RGAS3 
+      WPL(NP)=EB3                                               
+      IPN(NP)=1
+      L=12                                                           
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP3(3)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+      GO TO 230
+  170 DO 180 KION=1,NION3
+      NP=NP+1
+      CF(IE,NP)=QION3(KION,IE)*VAN3
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL3(3).EQ.1) THEN
+       PSCT1=PEQION3(KION,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL3(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQION3(KION,IE)
+       INDEX(NP)=2
+      ENDIF       
+C
+      IF(IE.GT.1) GO TO 180
+      RGAS(NP)=RGAS3
+      EIN(NP)=EION3(KION)/RGAS3
+      WPL(NP)=EB3
+      IPN(NP)=1
+      L=12
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP3(2+KION)
+      PENFRA(1,NP)=0.0D0
+      PENFRA(2,NP)=0.0D0
+      PENFRA(3,NP)=0.0D0
+  180 CONTINUE                                
+  230 IF(EFINAL.LT.E3(4)) GO TO 240                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q3(4,IE)*VAN3
+      FCATT(IE)=FCATT(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      IF(IE.GT.1) GO TO 240
+      INDEX(NP)=0                                            
+      RGAS(NP)=RGAS3                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=-1 
+      L=13                                                        
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP3(3+NION3)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0                                               
+  240 IF(NIN3.EQ.0) GO TO 260                                           
+      DO 250 J=1,NIN3 
+      NP=NP+1                                                           
+      CF(IE,NP)=QIN3(J,IE)*VAN3
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KIN3(J).EQ.1) THEN
+       PSCT1=PEQIN3(J,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KIN3(J).EQ.2) THEN
+       PSCT(IE,NP)=PEQIN3(J,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 250                                     
+      RGAS(NP)=RGAS3                                                    
+      EIN(NP)=EI3(J)/RGAS3
+      L=14
+      IF(EI3(J).LT.0.0D0) L=15                                          
+      IPN(NP)=0
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP3(5+NION3+J)  
+      PENFRA(1,NP)=PENFRA3(1,J)
+      PENFRA(2,NP)=PENFRA3(2,J)*1.D-6/DSQRT(3.0D0)
+      PENFRA(3,NP)=PENFRA3(3,J)                                   
+  250 CONTINUE
+C                              
+  260 IF(NGAS.EQ.3) GO TO 600  
+      NP=NP+1                                                           
+      CF(IE,NP)=Q4(2,IE)*VAN4 
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL4(2).EQ.1) THEN
+       PSCT1=PEQEL4(2,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1  
+      ENDIF 
+      IF(KEL4(2).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL4(2,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 262                                    
+      RGAS4=1.0D0+E4(2)/2.0D0                                           
+      RGAS(NP)=RGAS4                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=0
+      L=16                                                          
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP4(2)
+      NAMEG(4)=NAME4 
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+C                                       
+  262 IF(EFINAL.LT.E4(3)) GO TO 330  
+      IF(NION4.GT.1) GO TO 270                                   
+      NP=NP+1                                                           
+      CF(IE,NP)=Q4(3,IE)*VAN4
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0  
+C
+      IF(KEL4(3).EQ.1) THEN
+       PSCT1=PEQEL4(3,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL4(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL4(3,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 330                                     
+      RGAS(NP)=RGAS4                                                    
+      EIN(NP)=E4(3)/RGAS4 
+      WPL(NP)=EB4                                               
+      IPN(NP)=1  
+      L=17                                                        
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP4(3)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+      GO TO 330
+  270 DO 280 KION=1,NION4
+      NP=NP+1
+      CF(IE,NP)=QION4(KION,IE)*VAN4               
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL4(3).EQ.1) THEN
+       PSCT1=PEQION4(KION,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF       
+      IF(KEL4(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQION4(KION,IE)
+       INDEX(NP)=2
+      ENDIF       
+C
+      IF(IE.GT.1) GO TO 280
+      RGAS(NP)=RGAS4
+      EIN(NP)=EION4(KION)/RGAS4
+      WPL(NP)=EB4
+      IPN(NP)=1
+      L=17
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP4(2+KION)
+      PENFRA(1,NP)=0.0D0
+      PENFRA(2,NP)=0.0D0
+      PENFRA(3,NP)=0.0D0
+  280 CONTINUE      
+  330 IF(EFINAL.LT.E4(4)) GO TO 340                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q4(4,IE)*VAN4
+      FCATT(IE)=FCATT(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      IF(IE.GT.1) GO TO 340        
+      INDEX(NP)=0                             
+      RGAS(NP)=RGAS4                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=-1 
+      L=18                                                        
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP4(3+NION4)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0                                               
+  340 IF(NIN4.EQ.0) GO TO 360                                           
+      DO 350 J=1,NIN4 
+      NP=NP+1
+      CF(IE,NP)=QIN4(J,IE)*VAN4
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KIN4(J).EQ.1) THEN
+       PSCT1=PEQIN4(J,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KIN4(J).EQ.2) THEN
+       PSCT(IE,NP)=PEQIN4(J,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 350        
+      RGAS(NP)=RGAS4                                                    
+      EIN(NP)=EI4(J)/RGAS4
+      L=19
+      IF(EI4(J).LT.0.0D0) L=20                                          
+      IPN(NP)=0         
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP4(5+NION4+J)
+      PENFRA(1,NP)=PENFRA4(1,J)
+      PENFRA(2,NP)=PENFRA4(2,J)*1.D-6/DSQRT(3.0D0)
+      PENFRA(3,NP)=PENFRA4(3,J)
+  350 CONTINUE   
+C                                                     
+  360 IF(NGAS.EQ.4) GO TO 600  
+      NP=NP+1                                                           
+      CF(IE,NP)=Q5(2,IE)*VAN5 
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL5(2).EQ.1) THEN 
+       PSCT1=PEQEL5(2,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF 
+      IF(KEL5(2).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL5(2,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 362                                    
+      RGAS5=1.0D0+E5(2)/2.0D0                                           
+      RGAS(NP)=RGAS5                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=0
+      L=21                                                          
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP5(2) 
+      NAMEG(5)=NAME5  
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+C                                          
+  362 IF(EFINAL.LT.E5(3)) GO TO 430   
+      IF(NION5.GT.1) GO TO 370                                  
+      NP=NP+1                                                           
+      CF(IE,NP)=Q5(3,IE)*VAN5
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0 
+C
+      IF(KEL5(3).EQ.1) THEN
+       PSCT1=PEQEL5(3,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF 
+      IF(KEL5(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL5(3,IE)
+       INDEX(NP)=2
+      ENDIF
+C     
+      IF(IE.GT.1) GO TO 430                                    
+      RGAS(NP)=RGAS5                                                    
+      EIN(NP)=E5(3)/RGAS5 
+      WPL(NP)=EB5                                               
+      IPN(NP)=1
+      L=22                                                          
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP5(3)  
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0           
+      GO TO 430
+  370 DO 380 KION=1,NION5
+      NP=NP+1
+      CF(IE,NP)=QION5(KION,IE)*VAN5
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL5(3).EQ.1) THEN
+       PSCT1=PEQION5(KION,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF   
+      IF(KEL5(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQION5(KION,IE)
+       INDEX(NP)=2
+      ENDIF       
+C
+      IF(IE.GT.1) GO TO 380
+      RGAS(NP)=RGAS5
+      EIN(NP)=EION5(KION)/RGAS5
+      WPL(NP)=EB5
+      IPN(NP)=1
+      L=22
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP5(2+KION)
+      PENFRA(1,NP)=0.0D0
+      PENFRA(2,NP)=0.0D0
+      PENFRA(3,NP)=0.0D0
+  380 CONTINUE                        
+  430 IF(EFINAL.LT.E5(4)) GO TO 440                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q5(4,IE)*VAN5
+      FCATT(IE)=FCATT(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      IF(IE.GT.1) GO TO 440
+      INDEX(NP)=0                                     
+      RGAS(NP)=RGAS5                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=-1             
+      L=23                                            
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP5(3+NION5)  
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0                                             
+  440 IF(NIN5.EQ.0) GO TO 460                                           
+      DO 450 J=1,NIN5 
+      NP=NP+1                                                           
+      CF(IE,NP)=QIN5(J,IE)*VAN5 
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KIN5(J).EQ.1) THEN
+       PSCT1=PEQIN5(J,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KIN5(J).EQ.2) THEN
+       PSCT(IE,NP)=PEQIN5(J,IE)
+       INDEX(NP)=2
+      ENDIF   
+C       
+      IF(IE.GT.1) GO TO 450
+      RGAS(NP)=RGAS5                                                    
+      EIN(NP)=EI5(J)/RGAS5
+      L=24
+      IF(EI5(J).LT.0.0D0) L=25                                          
+      IPN(NP)=0         
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP5(5+NION5+J)
+      PENFRA(1,NP)=PENFRA5(1,J)
+      PENFRA(2,NP)=PENFRA5(2,J)*1.D-6/DSQRT(3.0D0)
+      PENFRA(3,NP)=PENFRA5(3,J)
+  450 CONTINUE                 
+C                                       
+  460 IF(NGAS.EQ.5) GO TO 600  
+      NP=NP+1                                                           
+      CF(IE,NP)=Q6(2,IE)*VAN6
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0 
+C
+      IF(KEL6(2).EQ.1) THEN
+       PSCT1=PEQEL6(2,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KEL6(2).EQ.2) THEN
+       PSCT(IE,NP)=PEQEL6(2,IE)
+       INDEX(NP)=2
+      ENDIF
+C  
+      IF(IE.GT.1) GO TO 462                                    
+      RGAS6=1.0D0+E6(2)/2.0D0                                           
+      RGAS(NP)=RGAS6                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=0
+      L=26                                                          
+      IARRY(NP)=L  
+      DSCRPT(NP)=SCRP6(2) 
+      NAMEG(6)=NAME6
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+C                                    
+  462 IF(EFINAL.LT.E6(3)) GO TO 530   
+      IF(NION6.GT.1) GO TO 470                                  
+      NP=NP+1                                                           
+      CF(IE,NP)=Q6(3,IE)*VAN6
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL6(3).EQ.1) THEN
+       PSCT1=PEQEL6(3,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1      
+      ENDIF
+      IF(KEL6(3).EQ.2) THEN 
+       PSCT(IE,NP)=PEQEL6(3,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 530                                     
+      RGAS(NP)=RGAS6                                                    
+      EIN(NP)=E6(3)/RGAS6 
+      WPL(NP)=EB6                                               
+      IPN(NP)=1             
+      L=27                                             
+      IARRY(NP)=L  
+      DSCRPT(NP)=SCRP6(3)  
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0        
+      GO TO 530
+  470 DO 480 KION=1,NION6 
+      NP=NP+1
+      CF(IE,NP)=QION6(KION,IE)*VAN6
+      FCION(IE)=FCION(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0
+C
+      IF(KEL6(3).EQ.1) THEN
+       PSCT1=PEQION6(KION,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF       
+      IF(KEL6(3).EQ.2) THEN
+       PSCT(IE,NP)=PEQION6(KION,IE)
+       INDEX(NP)=2
+      ENDIF       
+C
+      IF(IE.GT.1) GO TO 480
+      RGAS(NP)=RGAS6
+      EIN(NP)=EION6(KION)/RGAS6
+      WPL(NP)=EB6
+      IPN(NP)=1
+      L=27
+      IARRY(NP)=L
+      DSCRPT(NP)=SCRP6(2+KION)
+      PENFRA(1,NP)=0.0D0
+      PENFRA(2,NP)=0.0D0
+      PENFRA(3,NP)=0.0D0
+  480 CONTINUE                      
+  530 IF(EFINAL.LT.E6(4)) GO TO 540                                     
+      NP=NP+1                                                           
+      CF(IE,NP)=Q6(4,IE)*VAN6 
+      FCATT(IE)=FCATT(IE)+CF(IE,NP)
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      IF(IE.GT.1) GO TO 540        
+      INDEX(NP)=0                            
+      RGAS(NP)=RGAS6                                                    
+      EIN(NP)=0.0D0                                                     
+      IPN(NP)=-1
+      L=28                                                          
+      IARRY(NP)=L  
+      DSCRPT(NP)=SCRP6(3+NION6)
+      PENFRA(1,NP)=0.0
+      PENFRA(2,NP)=0.0
+      PENFRA(3,NP)=0.0                                               
+  540 IF(NIN6.EQ.0) GO TO 560                                           
+      DO 550 J=1,NIN6 
+      NP=NP+1                                                           
+      CF(IE,NP)=QIN6(J,IE)*VAN6
+      PSCT(IE,NP)=0.5D0
+      ANGCT(IE,NP)=1.0D0
+      INDEX(NP)=0 
+C
+      IF(KIN6(J).EQ.1) THEN
+       PSCT1=PEQIN6(J,IE)
+       CALL ANGCUT(PSCT1,ANGC,PSCT2)
+       ANGCT(IE,NP)=ANGC
+       PSCT(IE,NP)=PSCT2
+       INDEX(NP)=1
+      ENDIF
+      IF(KIN6(J).EQ.2) THEN
+       PSCT(IE,NP)=PEQIN6(J,IE)
+       INDEX(NP)=2
+      ENDIF
+C
+      IF(IE.GT.1) GO TO 550          
+      RGAS(NP)=RGAS6                                                    
+      EIN(NP)=EI6(J)/RGAS6
+      L=29
+      IF(EI6(J).LT.0.0D0) L=30                                          
+      IPN(NP)=0         
+      IARRY(NP)=L  
+      DSCRPT(NP)=SCRP6(5+NION6+J) 
+      PENFRA(1,NP)=PENFRA6(1,J)
+      PENFRA(2,NP)=PENFRA6(2,J)*1.D-6/DSQRT(3.0D0)
+      PENFRA(3,NP)=PENFRA6(3,J)
+  550 CONTINUE                                                     
+  560 CONTINUE     
+C                                                                       
+  600 CONTINUE                                                          
+      IPLAST=NP 
+      ISIZE=1
+      IF(IPLAST.GE.2)   ISIZE=2   
+      IF(IPLAST.GE.4)   ISIZE=4
+      IF(IPLAST.GE.8)   ISIZE=8
+      IF(IPLAST.GE.16)  ISIZE=16  
+      IF(IPLAST.GE.32)  ISIZE=32
+      IF(IPLAST.GE.64)  ISIZE=64
+      IF(IPLAST.GE.128) ISIZE=128
+      IF(IPLAST.GE.256) ISIZE=256
+      IF(IPLAST.GE.512) ISIZE=512
+      IF(IPLAST.GE.1024)ISIZE=1024          
+C ----------------------------------------------------------------      
+C   CAN INCREASE ARRAY SIZE UP TO 1560 IF MORE COMPLEX MIXTURES USED.
+C   1560 = 6 * 260 ( 6 = MAX NO OF GASES. 256 = MAX NO OF LEVELS )    
+C ------------------------------------------------------------------    
+      IF(IPLAST.GT.512) WRITE(6,992)                                    
+  992 FORMAT(/,/,6X,'WARNING TOO MANY LEVELS IN CALCULATION. CAN INCREAS
+     /E THE ARRAY SIZES FROM 512 UP TO 1560 MAXIMUM',/)                 
+      IF(IPLAST.GT.512) STOP                                            
+C --------------------------------------------------------------------  
+C     CALCULATION OF TOTAL COLLISION FREQUENCY                          
+C --------------------------------------------------------------------- 
+      TCF(IE)=0.0D0                                                     
+      DO 610 IF=1,IPLAST                                                
+      TCF(IE)=TCF(IE)+CF(IE,IF)
+      IF(CF(IE,IF).LT.0.0D0) WRITE(6,776) CF(IE,IF),IE,IF,IARRY(IF),EIN
+     /(IF) 
+  776 FORMAT('  WARNING NEGATIVE COLLISION FEQUENCY =',D12.3,' IE =',I6,
+     /' IF =',I3,' IARRY=',I5,' EIN=',F7.4)                             
+ 610  CONTINUE                                                          
+      DO 620 IF=1,IPLAST                                                
+      IF(TCF(IE).EQ.0.0D0) GO TO 615                                    
+      CF(IE,IF)=CF(IE,IF)/TCF(IE)                                       
+      GO TO 620                                                         
+ 615  CF(IE,IF)=0.0D0                                                   
+ 620  CONTINUE                                                          
+      DO 630 IF=2,IPLAST                                                
+      CF(IE,IF)=CF(IE,IF)+CF(IE,IF-1)                                   
+ 630  CONTINUE                   
+      FCATT(IE)=FCATT(IE)*EROOT(IE)
+      FCION(IE)=FCION(IE)*EROOT(IE)                                     
+      TCF(IE)=TCF(IE)*EROOT(IE)   
+ 700  CONTINUE 
+C     WRITE(6,841) (INDEX(J),J, J=1,IPLAST)
+C 841 FORMAT(2X,' INDEX=',I3,' J=',I3)                                  
+C  SET ANISOTROPIC FLAG IF ANISOTROPIC SCATTERING DATA IS DETECTED
+      KELSUM=0
+      DO 701 J=1,6
+ 701  KELSUM=KELSUM+KEL1(J)+KEL2(J)+KEL3(J)+KEL4(J)+KEL5(J)+KEL6(J)
+      DO 702 J=1,250
+ 702  KELSUM=KELSUM+KIN1(J)+KIN2(J)+KIN3(J)+KIN4(J)+KIN5(J)+KIN6(J)
+      IF(KELSUM.GT.0) NISO=1  
+C     IF(NISO.EQ.1) WRITE(6,7765) NISO
+C7765 FORMAT(3X,' ANISOTROPIC SCATTERING DETECTED NISO=',I5)            
+C -------------------------------------------------------------------   
+C   CALCULATE NULL COLLISION FREQUENCY                                  
+C -------------------------------------------------------------------   
+      BP=EFIELD*EFIELD*CONST1                                           
+      F2=EFIELD*CONST3                                                  
+      ELOW=TMAX*(TMAX*BP-F2*DSQRT(0.5D0*EFINAL))/ESTEP-1.0D0            
+      ELOW=DMIN1(ELOW,SMALL)                                            
+      EHI=TMAX*(TMAX*BP+F2*DSQRT(0.5D0*EFINAL))/ESTEP+1.0D0
+      IF(EHI.GT.10000.D0) EHI=10000.D0 
+      DO 810 I=1,8                                                      
+      JLOW=4000-500*(9-I)+1+DINT(ELOW)                                  
+      JHI=4000-500*(8-I)+DINT(EHI)
+      JLOW=DMAX0(JLOW,NONE)                                           
+      JHI=DMIN0(JHI,N4000)
+      DO 800 J=JLOW,JHI
+      IF(TCF(J).GE.TCFMAX(I)) TCFMAX(I)=TCF(J)                          
+  800 CONTINUE                                                          
+  810 CONTINUE                                                          
+C -------------------------------------------------------------------   
+C   CROSS SECTION DATA FOR INTEGRALS IN  OUTPUT               
+C --------------------------------------------------------------------- 
+      DO 900 I=1,NSTEP                                               
+      QTOT(I)=AN1*Q1(1,I)+AN2*Q2(1,I)+AN3*Q3(1,I)+AN4*Q4(1,I)+
+     /AN5*Q5(1,I)+AN6*Q6(1,I)            
+      QEL(I)=AN1*Q1(2,I)+AN2*Q2(2,I)+AN3*Q3(2,I)+AN4*Q4(2,I)+
+     /AN5*Q5(2,I)+AN6*Q6(2,I)             
+C                                                                       
+      QION(1,I)=Q1(3,I)*AN1 
+      IF(NION1.GT.1) THEN
+       QION(1,I)=0.0D0
+       DO 811 KION=1,NION1
+  811  QION(1,I)=QION(1,I)+QION1(KION,I)*AN1
+      ENDIF                                            
+      QION(2,I)=Q2(3,I)*AN2                                             
+      IF(NION2.GT.1) THEN
+       QION(2,I)=0.0D0
+       DO 812 KION=1,NION2
+  812  QION(2,I)=QION(2,I)+QION2(KION,I)*AN2
+      ENDIF                                            
+      QION(3,I)=Q3(3,I)*AN3                                             
+      IF(NION3.GT.1) THEN
+       QION(3,I)=0.0D0
+       DO 813 KION=1,NION3
+  813  QION(3,I)=QION(3,I)+QION3(KION,I)*AN3
+      ENDIF                                            
+      QION(4,I)=Q4(3,I)*AN4
+      IF(NION1.GT.1) THEN
+       QION(4,I)=0.0D0
+       DO 814 KION=1,NION4
+  814  QION(4,I)=QION(4,I)+QION4(KION,I)*AN4
+      ENDIF                                            
+      QION(5,I)=Q5(3,I)*AN5
+      IF(NION5.GT.1) THEN
+       QION(5,I)=0.0D0
+       DO 815 KION=1,NION5
+  815  QION(5,I)=QION(5,I)+QION5(KION,I)*AN5
+      ENDIF                                            
+      QION(6,I)=Q6(3,I)*AN6                                             
+      IF(NION6.GT.1) THEN
+       QION(6,I)=0.0D0
+       DO 816 KION=1,NION6
+  816  QION(6,I)=QION(6,I)+QION6(KION,I)*AN6
+      ENDIF                                            
+      QATT(1,I)=Q1(4,I)*AN1                                             
+      QATT(2,I)=Q2(4,I)*AN2                                             
+      QATT(3,I)=Q3(4,I)*AN3                                             
+      QATT(4,I)=Q4(4,I)*AN4
+      QATT(5,I)=Q5(4,I)*AN5
+      QATT(6,I)=Q6(4,I)*AN6                                             
+C                                                                       
+  850 QREL(I)=0.0D0                                                     
+      QSATT(I)=0.0D0                                                    
+      QSUM(I)=0.0D0                                                     
+      DO 855 J=1,NGAS                                                   
+      QSUM(I)=QSUM(I)+QION(J,I)+QATT(J,I)                               
+      QSATT(I)=QSATT(I)+QATT(J,I)                                       
+  855 QREL(I)=QREL(I)+QION(J,I)-QATT(J,I)                               
+C                                                                       
+      IF(NIN1.EQ.0) GO TO 865                                           
+      DO 860 J=1,NIN1                                                   
+  860 QSUM(I)=QSUM(I)+QIN1(J,I)*AN1                                     
+  865 IF(NIN2.EQ.0) GO TO 875                                           
+      DO 870 J=1,NIN2                                                   
+  870 QSUM(I)=QSUM(I)+QIN2(J,I)*AN2                                     
+  875 IF(NIN3.EQ.0) GO TO 885                                           
+      DO 880 J=1,NIN3                                                   
+  880 QSUM(I)=QSUM(I)+QIN3(J,I)*AN3                                     
+  885 IF(NIN4.EQ.0) GO TO 895                                           
+      DO 890 J=1,NIN4                                                   
+  890 QSUM(I)=QSUM(I)+QIN4(J,I)*AN4                                     
+  895 IF(NIN5.EQ.0) GO TO 898 
+      DO 896 J=1,NIN5
+  896 QSUM(I)=QSUM(I)+QIN5(J,I)*AN5
+  898 IF(NIN6.EQ.0) GO TO 900
+      DO 899 J=1,NIN6
+  899 QSUM(I)=QSUM(I)+QIN6(J,I)*AN6                                     
+C                                                                       
+ 900  CONTINUE                                                          
+C                                                                       
+      RETURN                                                            
+      END 
+      SUBROUTINE SETUP(LAST)                                            
+      IMPLICIT REAL*8 (A-H,O-Z)                                         
+      IMPLICIT INTEGER*8 (I-N)
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
+      COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
+      COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)               
+      COMMON/GASN/NGASN(6)                                 
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
+      COMMON/VEL/WX,WY,WZ
+      COMMON/VELERR/DWX,DWY,DWZ
+      COMMON/CTOWNS/ALPHA,ATT
+      COMMON/CTWNER/ALPER,ATTER
+      COMMON/DIFVEL/DIFLN,DIFTR
+      COMMON/DIFERL/DFLER,DFTER
+      COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
+      COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG 
       COMMON/MRATIO/VAN1,VAN2,VAN3,VAN4,VAN5,VAN6,VAN
       COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS                             
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
-C INTEGRALS OF ERROR FUNCTION
-C     DATA ERFINT/.112462916,.222702589,.328626759,.428392355,
-C    /.520499878,.603856091,.677801194,.742100965,.796908212,.842700793,
-C    /.880205070,.910313978,.934007945,.952285120,.966105146,.976348383,
-C    /.983790459,.989090502,.992790429,.995322265,.997020533,.998137154,
-C    /.998856823,.999311486,.999593048/
 C                                                                       
 C   NEW UPDATE OF CONSTANTS 2008
 C
-      DO 1 K=1,25
-    1 ERFINT(K)=0.0D0                                                   
       API=DACOS(-1.0D0)                                                 
       ARY=13.60569193                                                  
       PIR2=8.7973553523D-17                                             
@@ -1655,27 +9927,6 @@ C     NANISO=0
 C%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 C  --------------------------------------------                
 C                                                                       
-C      READ IN OUTPUT CONTROL AND INTEGRATION DATA                      
-C                                                                       
-      READ(5,2) NGAS,NMAX,IPEN,EFINAL                  
-    2 FORMAT(3I10,F10.5)                                           
-      IF(NGAS.EQ.0) GO TO 99
-C 
-C   GAS IDENTIFIERS 
-C
-      READ(5,3) NGASN(1),NGASN(2),NGASN(3),NGASN(4),NGASN(5),NGASN(6)
-    3 FORMAT(6I5)        
-C      
-C      GAS PARAMETERS
-C
-      READ(5,4) FRAC(1),FRAC(2),FRAC(3),FRAC(4),FRAC(5),FRAC(6),TEMPC,
-     /TORR                       
-    4 FORMAT(8F10.4)      
-C                                                  
-C      FIELD VALUES                                           
-C                                                                       
-      READ(5,5) EFIELD,BMAG,BTHETA                                      
-    5 FORMAT(3F10.3)
 C   CHECK INPUT
 C     IF(NGAS.EQ.1.AND.IPEN.EQ.1) THEN
 C     WRITE(6,992) 
@@ -1683,6 +9934,7 @@ C 992 FORMAT(' PROGRAM STOPPED IT IS NOT POSSIBLE TO HAVE PENNING TRANSF
 C    /ERS IN PURE GASES.',/,' ONLY MIXTURES ALLOWED WITH IPEN=1')
 C     STOP
 C     ENDIF
+c
       TOTFRAC=0.0D0
       IF(NGAS.EQ.0.OR.NGAS.GT.6) GO TO 999
       DO 10 J=1,NGAS
@@ -1691,7 +9943,7 @@ C     ENDIF
       IF(DABS(TOTFRAC-100.0D0).GT.1.D-6) GO TO 999
       LAST=0
       TMAX=100.0D0                                                      
-      NSCALE=10000000
+      NSCALE=40000000
       NMAX=NMAX*NSCALE 
       IF(NMAX.LT.0) THEN
        WRITE(6,91) 
@@ -1739,8 +9991,6 @@ C ZERO COMMON BLOCKS OF OUTPUT RESULTS
    80 ICOLN(K)=0                                                        
       DO 100 K=1,4000                                                   
   100 SPEC(K)=0.0D0                                                     
-      DO 101 K=1,8                                                      
-  101 TCFMAX(K)=0.0D0   
 C ---------------------------------------------  
 C CAN SET RANDOM NUMBER SEED TO SEED VALUE HERE
 C                                                               
@@ -1748,7 +9998,6 @@ C
 C    RANDOM NUMBER SEED FUNCTION (RSTART)      
 C-----------------------------------------------      
       ESTART=EFINAL/50.0D0
-      ITHRM=0                                            
       CORR=ABZERO*TORR/(ATMOS*(ABZERO+TEMPC)*100.0D0)                   
       AKT=(ABZERO+TEMPC)*BOLTZ
       AN1=FRAC(1)*CORR*ALOSCH                                           
@@ -1765,9 +10014,6 @@ C-----------------------------------------------
       VAN5=FRAC(5)*CORR*CONST4*1.0D15
       VAN6=FRAC(6)*CORR*CONST4*1.0D15                                   
       VAN=100.0D0*CORR*CONST4*1.0D15
-C CALCULATE THERMAL VELOCITY DISTRIBUTION INTEGRALS
-C     CON=1.0D-13/DSQRT(AMU/(2.0D0*BOLTZJ*(TEMPC+ABZERO)))
-C N.B.  LOADED ERROR FUNCTION INTEGRALS IN DATA ARRAY .      
 C                                                                       
 C  RADIANS PER PICOSECOND                                                        
       WB=AWB*BMAG*1.0D-12 
@@ -1786,22 +10032,20 @@ C   METRES PER PICOSECOND
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)              
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX                                                
-      COMMON/THRM/ERFINT(25),CON,ITHRM
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG  
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512)            
+     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512),TCFMAX(8)            
       COMMON/NAMES/NAMEG(6)                                             
-      CHARACTER*15 NAMEG                                  
+      CHARACTER*25 NAMEG                                  
       WRITE(6,1)
-    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 8.97',/)          
+    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 9.03',/)          
       WRITE(6,10) NGAS                                                  
    10 FORMAT(10X,'MONTE CARLO SOLUTION FOR MIXTURE OF ',I2,' GASES.',/,
      /5X,'------------------------------------------------------')  
       WRITE(6,30) (NAMEG(J),FRAC(J), J=1,NGAS)                          
-  30  FORMAT(/,5X,'  GASES  USED ',5X,' PERCENTAGE USED ',2(/),6(6X,A15,
-     /5X,F9.4,/))                    
+  30  FORMAT(/,5X,'  GASES  USED ',15X,' PERCENTAGE USED ',2(/),6(6X,A25
+     /,5X,F9.4,/))                    
       WRITE(6,50) TEMPC,TORR                                            
    50 FORMAT(/,2X,'GAS TEMPERATURE =',F6.1,' DEGREES CENTIGRADE.',/,2X,'
      /GAS PRESSURE = ',F7.1,' TORR.')                               
@@ -1825,10 +10069,8 @@ C   METRES PER PICOSECOND
   63  FORMAT(/,' ANISOTROPIC SCATTERING TYPE 2 (OKHRIMOVSKYY) USED IF AV
      /AILABLE') 
   64  FORMAT(/,' INPUT ERROR FOR ISOTROPY CONTROL,PROGRAM STOPPED')
-C     IF(ITHRM.EQ.0) WRITE(6,65)
-C     IF(ITHRM.NE.0) WRITE(6,66)
-C 65  FORMAT(2(/),' THERMAL MOTION OF GAS NOT INCLUDED')
-C 66  FORMAT(2(/),' THERMAL MOTION OF GAS INCLUDED')                   
+      WRITE(6,65)
+  65  FORMAT(2(/),' THERMAL MOTION OF GAS NOT INCLUDED')
   74  WRITE(6,90) EFIELD,BMAG,BTHETA,WB                                 
   90  FORMAT(1(/),'  ELECTRIC FIELD =',F12.4,' VOLTS/CM.',/'  MAGNETIC F
      /IELD =',F11.4,' KILOGAUSS.',/,'  ANGLE BETWEEN ELECTRIC AND MAGNET
@@ -1852,7 +10094,7 @@ C 96  FORMAT(/,'  RANDOM NUMBER STARTER (SEED)=',F7.4)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
 C         
 C    SELECTS COLLISION TYPE FROM COLLISION ARRAY BY BINARY STEP SAMPLING
 C      REDUCES SAMPLING RANGE TO WITHIN 4 POSITIONS IN ARRAY 
@@ -1878,10 +10120,9 @@ C
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX                                                
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO
       COMMON/VEL/WX,WY,WZ
       COMMON/VELERR/DWX,DWY,DWZ
@@ -1891,10 +10132,9 @@ C
       COMMON/DIFERL/DFLER,DFTER
       COMMON/DIFLAB/DIFXX,DIFYY,DIFZZ,DIFYZ,DIFXY,DIFXZ
       COMMON/DIFERB/DXXER,DYYER,DZZER,DYZER,DXYER,DXZER
-      COMMON/THRM/ERFINT(25),CON,ITHRM                         
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
-      DIMENSION XST(200000),YST(200000),ZST(200000),STO(200000)
+      DIMENSION XST(2000000),YST(2000000),ZST(2000000),STO(2000000)
       DIMENSION WZST(10),AVEST(10)
       DIMENSION DFZZST(10),DFYYST(10),DFXXST(10)
 C -------------------------------------------------------------------   
@@ -1948,8 +10188,8 @@ C -------------------------------------------------------------------
       NNULL=0
       IEXTRA=0
 C  NUMBER OF COLLISIONS FOR DE-CORRELATION                  
-      NCOLM=200000                                                     
-      TDASH=0.0D0                                                       
+      NCOLM=2000000                                                   
+      TDASH=0.0D0                  
 C                                                                       
 C     INITIAL DIRECTION COSINES                                         
 C                                                                       
@@ -2034,7 +10274,7 @@ C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.
       IF(J1.LT.3) GO TO 120
       ST1=ST1+T 
       SUMZZ=SUMZZ+((Z-ZST(NCOLDM)-WZ*SDIF)**2)*T/SDIF 
-  120 KDUM=KDUM+25000                      
+  120 KDUM=KDUM+250000                       
   121 XST(NCOL)=X
       YST(NCOL)=Y
       ZST(NCOL)=Z
@@ -2214,6 +10454,11 @@ C CALCULATE ERRORS AND CHECK AVERAGES
       DXXER=100.0D0*DSQRT((T2XXST-TXXST*TXXST/10.0D0)/9.0D0)/DIFXX
       DYYER=100.0D0*DSQRT((T2YYST-TYYST*TYYST/10.0D0)/9.0D0)/DIFYY 
       DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZ
+      DWZ=DWZ/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DXXER=DXXER/DSQRT(10.0D0)
+      DYYER=DYYER/DSQRT(10.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
       DIFLN=DIFZZ
       DIFTR=(DIFXX+DIFYY)/2.0D0
 C  CONVERT CM/SEC
@@ -2243,9 +10488,9 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000),
      /QEL(4000)                                                         
-      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(220,4000),    
-     /QIN2(220,4000),QIN3(220,4000),QIN4(220,4000),QIN5(220,4000),
-     /QIN6(220,4000),QSATT(4000)             
+      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(250,4000),    
+     /QIN2(250,4000),QIN3(250,4000),QIN4(250,4000),QIN5(250,4000),
+     /QIN6(250,4000),QSATT(4000)             
       COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)                 
       COMMON/DIFVEL/DIFLN,DIFTR
       COMMON/DIFERL/DFLER,DFTER
@@ -2255,18 +10500,17 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       COMMON/VELERR/DWX,DWY,DWZ
       COMMON/CTOWNS/ALPHA,ATT
       COMMON/CTWNER/ALPER,ATTER
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX        
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX   
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG    
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)                             
       COMMON/SINT/SIMF(4000)                                            
       COMMON/NAMES/NAMEG(6)
       COMMON/SCRIP/DSCRPT(512)
-      CHARACTER*30 DSCRPT                                               
-      CHARACTER*15 NAMEG
+      CHARACTER*50 DSCRPT                                               
+      CHARACTER*25 NAMEG
       WRITE(6,15)                                                       
       WRITE(6,15)                                                       
    15 FORMAT('----------------------------------------------------------
@@ -2331,11 +10575,10 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO        
       COMMON/DIFVEL/DIFLN,DIFTR
       COMMON/DIFERL/DFLER,DFTER
@@ -2347,7 +10590,7 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       COMMON/CTWNER/ALPER,ATTER
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)                            
-      DIMENSION XST(200000),YST(200000),ZST(200000),STO(200000) 
+      DIMENSION XST(1000000),YST(1000000),ZST(1000000),STO(1000000) 
       DIMENSION WZST(10),AVEST(10)                                 
       DIMENSION DFZZST(10),DFYYST(10),DFXXST(10)
 C -------------------------------------------------------------------   
@@ -2401,7 +10644,7 @@ C -------------------------------------------------------------------
       NNULL=0
       IEXTRA=0 
 C  NUMBER OF COLLISIONS FOR DE-CORRELATION                          
-      NCOLM=200000                                                      
+      NCOLM=1000000             
       TDASH=0.0D0                                                       
 C                                                                       
 C     INITIAL DIRECTION COSINES                                         
@@ -2496,7 +10739,7 @@ C    ALSO UPDATE DIFFUSION  AND ENERGY CALCULATIONS.
       IF(J1.LT.3) GO TO 120                                             
       ST1=ST1+T                                                       
       SUMZZ=SUMZZ+((Z-ZST(NCOLDM)-WZ*SDIF)**2)*T/SDIF
-  120 KDUM=KDUM+25000                      
+  120 KDUM=KDUM+125000                      
   121 XST(NCOL)=X
       YST(NCOL)=Y
       ZST(NCOL)=Z
@@ -2669,7 +10912,12 @@ C CALCULATE ERRORS AND CHECK AVERAGES
       DEN=100.0D0*DSQRT((T2AVE-TAVE*TAVE/10.0D0)/9.0D0)/AVE
       DXXER=100.0D0*DSQRT((T2XXST-TXXST*TXXST/10.0D0)/9.0D0)/DIFXX
       DYYER=100.0D0*DSQRT((T2YYST-TYYST*TYYST/10.0D0)/9.0D0)/DIFYY
-      DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZ 
+      DZZER=100.0D0*DSQRT((T2ZZST-TZZST*TZZST/8.0D0)/7.0D0)/DIFZZ
+      DWZ=DWZ/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DXXER=DXXER/DSQRT(10.0D0)
+      DYYER=DYYER/DSQRT(10.0D0)
+      DZZER=DZZER/DSQRT(8.0D0) 
       DIFLN=DIFZZ
       DIFTR=(DIFXX+DIFYY)/2.0D0   
 C CONVERT TO CM/SEC
@@ -2698,11 +10946,10 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO
       COMMON/MIX2/ES(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000)
      /,QEL(4000)                                                        
@@ -2716,7 +10963,7 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       COMMON/CTWNER/ALPER,ATTER
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)                             
-      DIMENSION XST(200000),YST(200000),ZST(200000),STO(200000)
+      DIMENSION XST(1000000),YST(1000000),ZST(1000000),STO(1000000)
       DIMENSION WZST(10),WYST(10),AVEST(10)
       DIMENSION DFZZST(10),DFYYST(10),DFXXST(10)
       DIMENSION DFYZST(10),DFLNST(10),DFTRST(10)                        
@@ -2771,7 +11018,7 @@ C -------------------------------------------------------------------
       NNULL=0  
       IEXTRA=0
 C  NUMBER OF COLLISIONS FOR DE-CORRELATION                            
-      NCOLM=200000                                                     
+      NCOLM=1000000              
       TDASH=0.0D0 
       CONST9=CONST3*0.01D0                                              
 C                                                                       
@@ -2872,7 +11119,7 @@ C CALC NEW POSITION
       DT2=B2-DL2
       SUMLS=SUMLS+DL2*T/SDIF
       SUMTS=SUMTS+DT2*T/SDIF
- 120  KDUM=KDUM+25000   
+ 120  KDUM=KDUM+125000   
  121  XST(NCOL)=X                                                       
       YST(NCOL)=Y                                                       
       ZST(NCOL)=Z                                                       
@@ -3074,6 +11321,15 @@ C CALCULATE ERRORS AND CHECK AVERAGES
       DYZER=100.0D0*DSQRT((T2YZST-TYZST*TYZST/8.0D0)/7.0D0)/DABS(DIFYZ)
       DFLER=100.0D0*DSQRT((T2LNST-TLNST*TLNST/8.0D0)/7.0D0)/DIFLN
       DFTER=100.0D0*DSQRT((T2TRST-TTRST*TTRST/8.0D0)/7.0D0)/DIFTR 
+      DWZ=DWZ/DSQRT(10.0D0)
+      DWY=DWY/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DXXER=DXXER/DSQRT(10.0D0)
+      DYYER=DYYER/DSQRT(8.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
+      DYZER=DYZER/DSQRT(8.0D0)
+      DFLER=DFLER/DSQRT(8.0D0)
+      DFTER=DFTER/DSQRT(8.0D0)
 C CONVERT TO CM/SEC      
       WZ=WZ*1.0D05
       WY=WY*1.0D05
@@ -3099,11 +11355,10 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO        
       COMMON/MIX2/ES(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000)
      /,QEL(4000)                                                        
@@ -3117,7 +11372,7 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       COMMON/CTWNER/ALPER,ATTER   
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)                             
-      DIMENSION XST(200000),YST(200000),ZST(200000),STO(200000)
+      DIMENSION XST(1000000),YST(1000000),ZST(1000000),STO(1000000)
       DIMENSION WZST(10),WYST(10),WXST(10),AVEST(10)
       DIMENSION DFZZST(10),DFYYST(10),DFXXST(10) 
       DIMENSION DFYZST(10),DFXYST(10),DFXZST(10)
@@ -3193,7 +11448,7 @@ C
       NCOL=0                                                            
       NNULL=0    
       IEXTRA=0                                         
-      NCOLM=200000                                                      
+      NCOLM=1000000              
       TDASH=0.0D0 
       CONST9=CONST3*0.01D0                                              
 C                                                                       
@@ -3287,7 +11542,7 @@ C CALC NEW POSITION
       SUMYZ=SUMYZ+(Z-ZST(NCOLDM)-WZ*SDIF)*(Y-YST(NCOLDM)-WY*SDIF)*T/SDIF
       SUMXY=SUMXY+(X-XST(NCOLDM)-WX*SDIF)*(Y-YST(NCOLDM)-WY*SDIF)*T/SDIF
       SUMXZ=SUMXZ+(X-XST(NCOLDM)-WX*SDIF)*(Z-ZST(NCOLDM)-WZ*SDIF)*T/SDIF
- 120  KDUM=KDUM+25000   
+ 120  KDUM=KDUM+125000   
  121  XST(NCOL)=X                                                       
       YST(NCOL)=Y                                                       
       ZST(NCOL)=Z                                                       
@@ -3517,6 +11772,16 @@ C CALCULATE ERRORS AND CHECK AVERAGES
       DXYER=100.0D0*DSQRT((T2XYST-TXYST*TXYST/8.0D0)/7.0D0)/DABS(DIFXYR)
       DYZER=100.0D0*DSQRT((T2YZST-TYZST*TYZST/8.0D0)/7.0D0)/DABS(DIFYZR)
       DXZER=100.0D0*DSQRT((T2XZST-TXZST*TXZST/8.0D0)/7.0D0)/DABS(DIFXZR)
+      DWZ=DWZ/DSQRT(10.0D0)
+      DWY=DWY/DSQRT(10.0D0)
+      DWX=DWX/DSQRT(10.0D0)
+      DEN=DEN/DSQRT(10.0D0)
+      DZZER=DZZER/DSQRT(8.0D0)
+      DYYER=DYYER/DSQRT(8.0D0)
+      DXXER=DXXER/DSQRT(8.0D0)
+      DXYER=DXYER/DSQRT(8.0D0)
+      DYZER=DYZER/DSQRT(8.0D0)
+      DXZER=DXZER/DSQRT(8.0D0)
 C LOAD ROTATED VALUES INTO ARRAYS
       WZ=WZR
       WX=WXR
@@ -3554,10 +11819,9 @@ C CALCULATE TOWNSEND COEFICIENTS AND ERRORS
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX                                                
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO        
 C -------------------------------------------------------------------   
 C   CALCULATES COLLISION EVENTS AND TESTS TO FIND IF THE UPPER ENERGY  
@@ -3699,11 +11963,10 @@ C LOOP
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO        
 C -------------------------------------------------------------------   
 C   CALCULATES COLLISION EVENTS AND TESTS TO FIND IF THE UPPER ENERGY  
@@ -3858,11 +12121,10 @@ C LOOP
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2             
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX  
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX  
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/ANIS/PSCT(4000,512),ANGCT(4000,512),INDEX(512),NISO       
 C -------------------------------------------------------------------   
 C   CALCULATES COLLISION EVENTS AND TESTS TO FIND IF THE UPPER ENERGY  
@@ -4020,8 +12282,7 @@ C LOOP
       SUBROUTINE ALPCALC 
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX 
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/SSTOUT/VDOUT,VDERR,WSOUT,WSERR,DLOUT,DLERR,DTOUT,DTERR,
      /ALPHSST,ALPHERR,ATTSST,ATTERR         
       COMMON/TOFOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWV,TOFWVER,
@@ -4129,10 +12390,9 @@ C CALC TIME OF FLIGHT AND PT
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX                                                
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
@@ -4638,7 +12898,7 @@ C     DCY2=DCY1*CONST6
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5
       COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS 
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512) 
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8) 
       COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000),
      /QEL(4000) 
       DIMENSION FR(4000)                                                
@@ -4669,155 +12929,14 @@ C-----------------------------------------------------
      /E ATTACHMENT =',E11.4,' *10**12/SEC') 
       RETURN   
       END
-      SUBROUTINE PT
-      IMPLICIT REAL*8 (A-H,O-Z)                                         
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
-     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
-      COMMON/PTTOF/RI(8),EPT(8),VZPT(8),TTEST(8)
-      DIMENSION ANTPL(8)
-C ------------------------------------------------
-C CALCULATES PULSED TOWNSEND COEFFICIENTS
-C-------------------------------------------------
-      ANTPL(1)=DFLOAT(NETPL(1))
-      RI(1)=(DLOG(ANTPL(1))-DLOG(DFLOAT(IPRIM)))/TSTEP
-      EPT(1)=ETPL(1)/ANTPL(1)
-      TTEST(1)=TTPL(1)/ANTPL(1)
-      VZPT(1)=1.0D+09*VZTPL(1)/ANTPL(1)
-      DO 10 I=2,ITFINAL
-      IF(NETPL(I).EQ.0) THEN
-       ITFINAL=I-1
-       GO TO 11
-      ENDIF      
-      ANTPL(I)=DFLOAT(NETPL(I))
-      RI(I)=(DLOG(ANTPL(I))-DLOG(ANTPL(I-1)))/TSTEP
-      EPT(I)=ETPL(I)/ANTPL(I)
-      TTEST(I)=TTPL(I)/ANTPL(I)
-      VZPT(I)=1.0D+09*VZTPL(I)/ANTPL(I)
-  10  CONTINUE
-  11  WRITE(6,900) ITFINAL
- 900  FORMAT(2(/),' PULSED TOWNSEND RESULTS AT',I2,' SEQUENTIAL TIME PLA
-     /NES',/,' PLANE NO.   (ION-ATT) FREQ.   ENERGY      WV      NO.OF E
-     /LECTRONS',/)   
-      DO 20 IPL=1,ITFINAL
-      WRITE(6,910) IPL,RI(IPL),EPT(IPL),VZPT(IPL),NETPL(IPL)
- 910  FORMAT(2X,I2,4X,E15.4,7X,F7.2,4X,F7.2,3X,I8)
-  20  CONTINUE 
-      RETURN
-      END
-      SUBROUTINE TOF
-      IMPLICIT REAL*8 (A-H,O-Z)                                         
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/TPLOUT/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
-     /YYTPL(8),ZZTPL(8),VZTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
-      COMMON/TOFOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWV,TOFWVER,
-     /TOFDL,TOFDLER,TOFDT,TOFDTER,TOFWR,TOFWRER,RATTOF,RATOFER 
-      COMMON/PTTOF/RI(8),EPT(8),VZPT(8),TTEST(8)
-      DIMENSION DLTF(8),DXTF(8),DYTF(8),WR(8),ANTPL(8)
-C----------------------------------------------------------
-C CALCULATES TIME OF FLIGHT COEFFICIENTS
-C---------------------------------------------
-      ANTPL(1)=DFLOAT(NETPL(1))
-      WR(1)=ZTPL(1)/(ANTPL(1)*TSTEP)
-      DLTF(1)=((ZZTPL(1)/ANTPL(1))-(ZTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DXTF(1)=((XXTPL(1)/ANTPL(1))-(XTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DYTF(1)=((YYTPL(1)/ANTPL(1))-(YTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DO 10 I=2,ITFINAL
-      ANTPL(I)=DFLOAT(NETPL(I))
-      WR(I)=((ZTPL(I)/ANTPL(I))-(ZTPL(I-1)/ANTPL(I-1)))/TSTEP
-      DLTF(I)=((ZZTPL(I)/ANTPL(I))-(ZTPL(I)/ANTPL(I))**2-(ZZTPL(I-1)/ANT
-     /PL(I-1))+(ZTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DXTF(I)=((XXTPL(I)/ANTPL(I))-(XTPL(I)/ANTPL(I))**2-(XXTPL(I-1)/ANT
-     /PL(I-1))+(XTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DYTF(I)=((YYTPL(I)/ANTPL(I))-(YTPL(I)/ANTPL(I))**2-(YYTPL(I-1)/ANT
-     /PL(I-1))+(YTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-  10  CONTINUE  
-      DO 15 I=1,ITFINAL
-      WR(I)=WR(I)*1.0D+09
-      DLTF(I)=DLTF(I)*1.0D+16
-      DXTF(I)=DXTF(I)*1.0D+16
-      DYTF(I)=DYTF(I)*1.0D+16
-  15  CONTINUE
-      WRITE(6,900) ITFINAL
- 900  FORMAT(2(/),' TIME OF FLIGHT RESULTS AT',I2,' SEQUENTIAL TIME PLAN
-     /ES',/,' PLANE NO.        DL         DX          DY            WR',
-     //)
-      DO 20 IPL=1,ITFINAL   
-      WRITE(6,910) IPL,DLTF(IPL),DXTF(IPL),DYTF(IPL),WR(IPL)
- 910  FORMAT(3X,I3,4X,3F12.1,4X,F8.2)
-  20  CONTINUE    
-      IF(NETPL(1).GT.NETPL(ITFINAL)) THEN
-C        NET ATTACHMENT TAKE RESULTS FROM PLANE 2
-       TOFENE=EPT(2)
-       TOFENER=100.0D0*DABS((EPT(2)-EPT(3))/(2.0D0*EPT(2)))
-       TOFWV=VZPT(2)
-       TOFWVER=100.0D0*DABS((VZPT(2)-VZPT(3))/(2.0D0*VZPT(2))) 
-       TOFDL=DLTF(2)
-       TOFDLER=100.0D0*DABS((DLTF(2)-DLTF(3))/(2.0D0*DLTF(2)))
-       TDT2=(DXTF(2)+DYTF(2))/2.0D0
-       TDT3=(DXTF(3)+DYTF(3))/2.0D0
-       TOFDT=TDT2
-       TOFDTER=100.0D0*DABS((TDT2-TDT3)/(2.0D0*TDT2))
-       TOFWR=WR(2)
-       TOFWRER=100.0D0*DABS((WR(2)-WR(3))/(2.0D0*WR(2))) 
-        ANST2=DFLOAT(NETPL(2))
-        ANST3=DFLOAT(NETPL(3))
-        ANST4=ANST3-DSQRT(ANST3)
-        ANST5=DLOG(ANST2/ANST3)
-        ANST6=DLOG(ANST2/ANST4)
-        ANST7=ANST6/ANST5
-        ANST8=ANST7-1.0D0
-       IF(ATTOINT.EQ.-1.0) THEN
-C        NO IONISATION
-        RALPHA=0.0D0
-        RALPER=0.0D0
-        RATTOF=-RI(2)
-        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
-       ELSE
-        RALPHA=RI(2)/(1.0D0-ATTOINT)
-        RALPER=100.0D0*DSQRT(ANST8**2+AIOERT**2)
-        RATTOF=ATTOINT*RI(2)/(1.0D0-ATTOINT)
-        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
-       ENDIF 
-      ELSE
-C NET IONISATION TAKE RESULTS FROM PLANE ITFINAL
-       I1=ITFINAL
-       I2=ITFINAL-1  
-       TOFENE=EPT(I1)
-       TOFENER=100.0D0*DABS((EPT(I1)-EPT(I2))/(2.0D0*EPT(I1)))
-       TOFWV=VZPT(I1)
-       TOFWVER=100.0D0*DABS((VZPT(I1)-VZPT(I2))/(2.0D0*VZPT(I1)))
-       TOFDL=DLTF(I1)
-       TOFDLER=100.0D0*DABS((DLTF(I1)-DLTF(I2))/(2.0D0*DLTF(I1)))
-       TDT1=(DXTF(I1)+DYTF(I1))/2.0D0
-       TDT2=(DXTF(I2)+DYTF(I2))/2.0D0
-       TOFDT=TDT1
-       TOFDTER=100.0D0*DABS((TDT1-TDT2)/(2.0D0*TDT1))
-       TOFWR=WR(I1)
-       TOFWRER=100.0D0*DABS((WR(I1)-WR(I2))/(2.0D0*WR(I1)))
-       ATER=DABS((RI(I1)-RI(I2))/(2.0D0*RI(I1)))
-       RALPHA=RI(I1)/(1.0D0-ATTOINT)
-       RALPER=100.0D0*DSQRT(ATER**2+AIOERT**2)
-       RATTOF=ATTOINT*RI(I1)/(1.0D0-ATTOINT)
-       IF(ATTOINT.NE.0.0D0) THEN
-        RATOFER=100.0D0*DSQRT(ATER**2+ATTERT**2)
-       ELSE
-        RATOFER=0.0D0
-       ENDIF  
-      ENDIF
-      RETURN
-      END               
       SUBROUTINE MONTEFD                                                
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX                                                
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
@@ -5478,199 +13597,27 @@ C  FOUND BACKWARD SOLUTIONS
       ENDIF   
       RETURN
       END
-      SUBROUTINE SST 
-      IMPLICIT REAL*8 (A-H,O-Z)                                         
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/SPLOUT/ESPL(8),XSPL(8),YSPL(8),ZSPL(8),TSPL(8),XXSPL(8),
-     /YYSPL(8),ZZSPL(8),VZSPL(8),TSSUM(8),TSSUM2(8),ATTOION,ATTIOER,
-     /ATTATER,NESST(9)
-      COMMON/SPL1/TMSPL(8),TTMSPL(8),RSPL(8),RRSPL(8),RRSPM(8)
-      COMMON/CTCALC/ZPLANE1,ZPLANE2,ZPLANE3,ZPLANE4,ZPLANE5,ZPLANE6,
-     /ZPLANE7,ZPLANE8,IZFINAL
-      COMMON/SSTOUT/VDOUT,VDERR,WSOUT,WSERR,DLOUT,DLERR,DTOUT,DTERR,
-     /ALPHSST,ALPHERR,ATTSST,ATTERR         
-      DIMENSION ESST(8),VDSST(8),WSSST(8),DXSST(8),DYSST(8),WTEMP(8)
-      DIMENSION DRSST(8)
-      DIMENSION ALFNE(8),ALFNJ(8),ALFN(8),ZSST(8),DLSST(8)          
-      DIMENSION DRSS1(8),DRSS2(8),DRSS3(8),ALFEX1(8),NEPL(8)
-C----------------------------------------------------------------------
-C CALCULATES STEADY STATE TOWNSEND COEFFICIENTS.
-C LOADS REULTS AND ERRORS INTO COMMON BLOCKS /SSTOUT/
-C -------------------------------------------------------------------
-      VDOUT=0.0D0
-      VDERR=0.0D0
-      WSOUT=0.0D0
-      WSERR=0.0D0
-      DLOUT=0.0D0
-      DLERR=0.0D0
-      DTOUT=0.0D0
-      DTERR=0.0D0
-      ALPHSST=0.0D0
-      ALPHERR=0.0D0
-      ATTSST=0.0D0
-      ATTERR=0.0D0
-      JPRINT=IZFINAL
-C CALCULATE NUMBER OF ELECTRONS AT EACH PLANE
-      NEPL(1)=IPRIM+NESST(1)
-      DO 21 K=2,JPRINT
-      NEPL(K)=NEPL(K-1)+NESST(K)
-  21  CONTINUE   
-C  SUBSTITUTE NEPL FOR NEEST
-      DO 22 K=1,JPRINT
-  22  NESST(K)=NEPL(K)
-      DO 23 I=1,JPRINT
-      IF(NESST(I).EQ.0) THEN
-       JPRINT=I-1
-       GO TO 24
-      ENDIF 
-  23  CONTINUE
-  24  ESST(1)=ESPL(1)/TSSUM(1)
-      ZSST(1)=ZSPL(1)/TSSUM(1)
-      VDSST(1)=VZSPL(1)/TSSUM(1)
-      WTEMP(1)=ZSTEP*TSSUM(1)/TMSPL(1)
-      WSSST(1)=WTEMP(1)
-      DXSST(1)=((XXSPL(1)/TSSUM(1))-(XSPL(1)/TSSUM(1))**2)*WSSST(1)/
-     /(2.0D0*ZSTEP)
-      DYSST(1)=((YYSPL(1)/TSSUM(1))-(YSPL(1)/TSSUM(1))**2)*WSSST(1)/
-     /(2.0D0*ZSTEP)    
-      DLSST(1)=((TTMSPL(1)/TSSUM(1))-(TMSPL(1)/TSSUM(1))**2)*WSSST(1)**3
-     //(2.0D0*ZSTEP)
-      IF(NESST(1).EQ.0) GO TO 1 
-      ALFNE(1)=(DLOG(DFLOAT(NESST(1)))-DLOG(DFLOAT(IPRIM)))/ZSTEP
-    1 ALFNJ(1)=0.0D0
-      ALFN(1)=0.0D0 
-      DO 10 I=2,JPRINT 
-      ESST(I)=ESPL(I)/TSSUM(I)
-      ZSST(I)=ZSPL(I)/TSSUM(I)
-      VDSST(I)=VZSPL(I)/TSSUM(I)
-      WTEMP(I)=ZSTEP*DFLOAT(I)*TSSUM(I)/TMSPL(I)
-      WSSST(I)=(WTEMP(I)*WTEMP(I-1))/(I*WTEMP(I-1)-(I-1)*WTEMP(I))
-      DXSST(I)=((XXSPL(I)/TSSUM(I))-(XSPL(I)/TSSUM(I))**2-(XXSPL(I-1)/
-     /TSSUM(I-1))+(XSPL(I-1)/TSSUM(I-1))**2)*WSSST(I)/(2.0D0*ZSTEP)
-      DYSST(I)=((YYSPL(I)/TSSUM(I))-(YSPL(I)/TSSUM(I))**2-(YYSPL(I-1)/
-     /TSSUM(I-1))+(YSPL(I-1)/TSSUM(I-1))**2)*WSSST(I)/(2.0D0*ZSTEP)
-      DLSST(I)=((TTMSPL(I)/TSSUM(I))-(TMSPL(I)/TSSUM(I))**2-(TTMSPL(I-1)
-     //TSSUM(I-1))+(TMSPL(I-1)/TSSUM(I-1))**2)*WSSST(I)**3/(2.0D0*ZSTEP)
-      ALFN(I)=(DLOG(TSSUM(I))-DLOG(TSSUM(I-1)))/ZSTEP
-      ALFNJ(I)=(DLOG(TSSUM(I)*VDSST(I))-DLOG(TSSUM(I-1)*VDSST(I-1)))/ZST
-     /EP
-      IF(NESST(I).EQ.0.OR.NESST(I-1).EQ.0) GO TO 10
-   10 ALFNE(I)=(DLOG(DFLOAT(NESST(I)))-DLOG(DFLOAT(NESST(I-1))))/ZSTEP
-      DXFIN=((XXSPL(JPRINT)/TSSUM(JPRINT))-(XSPL(JPRINT)/TSSUM(JPRINT))
-     /**2)*WSSST(JPRINT)/(JPRINT*2.0D0*ZSTEP)
-      DXFIN=DXFIN*1.0D+16 
-      DYFIN=((YYSPL(JPRINT)/TSSUM(JPRINT))-(YSPL(JPRINT)/TSSUM(JPRINT))
-     /**2)*WSSST(JPRINT)/(JPRINT*2.0D0*ZSTEP)
-      DYFIN=DYFIN*1.0D+16
-      DLFIN=((TTMSPL(JPRINT)/TSSUM(JPRINT))-(TMSPL(JPRINT)/TSSUM(JPRINT)
-     /)**2)*WSSST(JPRINT)**3/(JPRINT*2.0D0*ZSTEP)
-      DLFIN=DLFIN*1.0D+16
-      ALNGTH=ZSTEP*DFLOAT(JPRINT)
-      ALFIN=DLOG(DFLOAT(NESST(JPRINT))/DFLOAT(IPRIM))/ALNGTH
-      ALFIN=ALFIN*0.01D0
-      DO 15 J=1,JPRINT       
-      VDSST(J)=VDSST(J)*1.0D+09
-      WSSST(J)=WSSST(J)*1.0D+09
-      DXSST(J)=DXSST(J)*1.0D+16  
-      DYSST(J)=DYSST(J)*1.0D+16
-      DLSST(J)=DLSST(J)*1.0D+16
-      ALFN(J)=ALFN(J)*0.01D0 
-      ALFNJ(J)=ALFNJ(J)*0.01D0 
-      ALFNE(J)=ALFNE(J)*0.01D0
-  15  CONTINUE
-      WRITE(6,800) JPRINT     
- 800  FORMAT(2(/),' STEADY STATE TOWNSEND RESULTS FOR',I2,' SEQUENTIAL S
-     /PACE PLANES',2(/),'PLANE   NEL     VD      WS     DL       DT    
-     /EBAR   ALFN    ALFNJ   ALFNE',/)  
-      DO 20 IPL=1,JPRINT  
-      DRSST(IPL)=(DXSST(IPL)+DYSST(IPL))/2.0    
-  20  WRITE(6,810)IPL,NESST(IPL),VDSST(IPL),WSSST(IPL),DLSST(IPL),DRSST(
-     /IPL),ESST(IPL),ALFN(IPL),ALFNJ(IPL),ALFNE(IPL)
- 810  FORMAT(1X,I2,2X,I7,2(1X,F6.1),2F9.1,F6.1,3F8.1)
-      IF(NESST(1).GT.NESST(5)) THEN
-C NET ATTACHMENT THEREFORE TAKE RESULTS FROM PLANE 2
-       VDOUT=VDSST(2)
-       VDERR=100.0D0*DABS((VDSST(2)-VDSST(3))/(2.0D0*VDSST(2)))
-       WSOUT=WSSST(2)
-       WSERR=100.0D0*DABS((WSSST(2)-WSSST(3))/(2.0D0*WSSST(2)))
-       DLOUT=DLSST(2)
-       DLERR=100.0D0*DABS((DLSST(2)-DLSST(3))/(2.0D0*DLSST(2)))
-       DTOUT=DRSST(2)
-       DTERR=100.0D0*DABS((DRSST(2)-DRSST(3))/(2.0D0*DRSST(2)))
-       IF(ATTOION.EQ.-1.0D0) THEN
-C NO IONISATION       
-        ALPHSST=0.0
-        ALPHERR=0.0
-        ANST2=DFLOAT(NESST(2))
-        ANST3=DFLOAT(NESST(3))
-        ANST4=ANST3-DSQRT(ANST3)
-        ANST5=DLOG(ANST2/ANST3)
-        ANST6=DLOG(ANST2/ANST4)
-        ANST7=ANST6/ANST5
-        ANST8=ANST7-1.0D0
-        ATTSST=-(ALFN(2)+ALFNJ(2)+ALFNE(2))/3.0D0
-        ATTERR=100.0D0*DSQRT(ANST8**2+ATTATER**2)         
-       ELSE
-        ANST2=DFLOAT(NESST(2))
-        ANST3=DFLOAT(NESST(3))
-        ANST4=ANST3-DSQRT(ANST3)
-        ANST5=DLOG(ANST2/ANST3)
-        ANST6=DLOG(ANST2/ANST4)
-        ANST7=ANST6/ANST5
-        ANST8=ANST7-1.0D0
-        ATMP=(ALFN(2)+ALFNJ(2)+ALFNE(2))/3.0D0
-        ALPHSST=ATMP/(1.0D0-ATTOION)
-        ALPHERR=100.0D0*DSQRT(ANST8**2+ATTIOER**2)
-        ATTSST=ATTOION*ATMP/(1.0D0-ATTOION)
-        ATTERR=100.0D0*DSQRT(ANST8**2+ATTATER**2)
-       ENDIF
-      ELSE 
-C NET IONISATION THEREFORE TAKE RESULTS FROM PLANE 8
-       VDOUT=VDSST(8)
-       VDERR=100.0D0*DABS((VDSST(8)-VDSST(7))/(2.0D0*VDSST(8)))
-       WSOUT=WSSST(8)
-       WSERR=100.0D0*DABS((WSSST(8)-WSSST(7))/(2.0D0*WSSST(8)))
-       DLOUT=DLFIN   
-       DLERR=100.0D0*DABS((DLOUT-DLSST(8))/(2.0D0*DLOUT))
-       DTOUT=(DXFIN+DYFIN)/2.0D0
-       DTERR=100.0D0*DABS((DTOUT-DRSST(8))/(2.0D0*DTOUT))
-       ATMP=(ALFN(8)+ALFNJ(8)+ALFNE(8))/3.0D0
-       ATMP2=(ALFN(7)+ALFNJ(7)+ALFNE(7))/3.0D0
-       ATER=DABS((ATMP-ATMP2)/(2.0D0*ATMP)) 
-       ALPHSST=ATMP/(1.0D0-ATTOION)
-       ALPHERR=100.0D0*DSQRT(ATER**2+ATTIOER**2)
-       ATTSST=ATTOION*ATMP/(1.0D0-ATTOION)
-       IF(ATTOION.NE.0.0D0) THEN
-        ATTERR=100.0D0*DSQRT(ATER**2+ATTATER**2)
-       ELSE
-        ATTERR=0.0D0
-       ENDIF 
-      ENDIF 
-      RETURN
-      END
       SUBROUTINE OUTPUT2
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/MIX2/E(4000),EROOT(4000),QTOT(4000),QREL(4000),QINEL(4000),
      /QEL(4000)                                                         
-      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(220,4000),    
-     /QIN2(220,4000),QIN3(220,4000),QIN4(220,4000),QIN5(220,4000),
-     /QIN6(220,4000),QSATT(4000)             
+      COMMON/MIX1/QELM(4000),QSUM(4000),QION(6,4000),QIN1(250,4000),    
+     /QIN2(250,4000),QIN3(250,4000),QIN4(250,4000),QIN5(250,4000),
+     /QIN6(250,4000),QSATT(4000)             
       COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)                   
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512)                 
+     /IPN(512),WPL(512),LAST,ISIZE,PENFRA(3,512),TCFMAX(8)             
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
       COMMON/TTRM/ZTOT,TTOT,ZTOTS,TTOTS 
       COMMON/SINT/SIMF(4000)                                            
       COMMON/NAMES/NAMEG(6)
       COMMON/SCRIP/DSCRPT(512)
-      CHARACTER*30 DSCRPT               
-      CHARACTER*15 NAMEG  
+      CHARACTER*50 DSCRPT               
+      CHARACTER*25 NAMEG  
       DIMENSION FREQEL(6),FREQSP(6),FREINE(6),FREATT(6),FREION(6)       
       DIMENSION SPECS(40)                                               
       WRITE(6,15)                                                       
@@ -5724,7 +13671,7 @@ C     WRITE(6,15)
      /OF 10**12/SEC. :',2(/))
       DO 1100 J=1,NGAS
       WRITE(6,1065) NAMEG(J)
- 1065 FORMAT(3X,A15,/,'------------------',2(/))
+ 1065 FORMAT(3X,A25,/,'-----------------------------',2(/))
       DO 1090 K=1,LAST
       IF(IARRY(K).LE.(5*J).AND.IARRY(K).GT.(5*(J-1))) THEN
        FRELV=FREQ*ICOLN(K)/DFLOAT(NREAL)
@@ -5734,7 +13681,7 @@ C     WRITE(6,15)
         ERRFRE=100.0D0*DSQRT(DFLOAT(ICOLN(K)))/DFLOAT(ICOLN(K))
        ENDIF  
        WRITE(6,1070) DSCRPT(K),FRELV,ERRFRE
- 1070 FORMAT(3X,A30,3X,D11.4,' +-',F8.4,' %')
+ 1070 FORMAT(3X,A50,3X,D11.4,' +-',F8.4,' %')
       ENDIF
  1090 CONTINUE
  1100 CONTINUE
@@ -5759,15 +13706,14 @@ C     WRITE(6,15)
       DO 420 I=1,40                                                     
       ENER=EPLT*(DFLOAT(I)-0.5D0)                                       
       WRITE(6,302) ENER,SPECS(I)                                        
-  302 FORMAT(6X,'E=',F7.3,6X,'SPEC=',D10.3)                             
+  302 FORMAT(6X,'E=',F11.3,6X,'SPEC=',D11.4)                             
   420 CONTINUE                                                          
       RETURN                                                            
       END 
       SUBROUTINE ALPCLCB   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX 
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/TOFGOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
      /TOFWVY,TOFWVYER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,TOFDYY,TOFDYYER,
      /TOFDYZ,TOFDYZER,TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,RATTOF,RATOFER 
@@ -5839,11 +13785,10 @@ C --- -------------------------------------------
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
@@ -6386,178 +14331,10 @@ C CALC TIME LEFT TO ARRIVE AT PLANE
       NETPL(IPLANE)=NETPL(IPLANE)+1 
       RETURN
       END
-      SUBROUTINE PTG
-      IMPLICIT REAL*8 (A-H,O-Z)                                         
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/TPLOUTG/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
-     /YYTPL(8),ZZTPL(8),YZTPL(8),VZTPL(8),VYTPL(8),NETPL(8),ATTOINT,
-     /ATTERT,AIOERT
-      COMMON/PTTOFG/RI(8),EPT(8),VZPT(8),VYPT(8),TTEST(8)
-      DIMENSION ANTPL(8)
-C ------------------------------------------------
-C CALCULATES PULSED TOWNSEND COEFFICIENTS
-C-------------------------------------------------
-      ANTPL(1)=DFLOAT(NETPL(1))
-      RI(1)=(DLOG(ANTPL(1))-DLOG(DFLOAT(IPRIM)))/TSTEP
-      EPT(1)=ETPL(1)/ANTPL(1)
-      TTEST(1)=TTPL(1)/ANTPL(1)
-      VZPT(1)=1.0D+09*VZTPL(1)/ANTPL(1)
-      VYPT(1)=1.0D+09*VYTPL(1)/ANTPL(1)
-      DO 10 I=2,ITFINAL
-      IF(NETPL(I).EQ.0) THEN
-       ITFINAL=I-1
-       GO TO 11
-      ENDIF
-      ANTPL(I)=DFLOAT(NETPL(I))      
-      RI(I)=(DLOG(ANTPL(I))-DLOG(ANTPL(I-1)))/TSTEP
-      EPT(I)=ETPL(I)/ANTPL(I)
-      TTEST(I)=TTPL(I)/ANTPL(I)
-      VZPT(I)=1.0D+09*VZTPL(I)/ANTPL(I)
-      VYPT(I)=1.0D+09*VYTPL(I)/ANTPL(I)
-  10  CONTINUE
-  11  WRITE(6,900) ITFINAL
- 900  FORMAT(2(/),' PULSED TOWNSEND RESULTS AT',I2,' SEQUENTIAL TIME PLA
-     /NES',/,'PLANE   (ION-ATT)FRQ.    ENERGY      WVZ       WVY   NO.OF
-     / ELECTRONS',/)   
-      DO 20 IPL=1,ITFINAL
-      WRITE(6,910) IPL,RI(IPL),EPT(IPL),VZPT(IPL),VYPT(IPL),NETPL(IPL)
- 910  FORMAT(1X,I2,4X,D12.4,4X,F7.2,4X,F6.1,4X,F6.1,4X,I8)
-  20  CONTINUE 
-      RETURN
-      END
-      SUBROUTINE TOFG
-      IMPLICIT REAL*8 (A-H,O-Z)                                         
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/TPLOUTG/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
-     /YYTPL(8),ZZTPL(8),YZTPL(8),VZTPL(8),VYTPL(8),NETPL(8),ATTOINT,
-     /ATTERT,AIOERT
-      COMMON/TOFGOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
-     /TOFWVY,TOFWVYER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,TOFDYY,TOFDYYER,
-     /TOFDYZ,TOFDYZER,TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,RATTOF,RATOFER 
-      COMMON/PTTOFG/RI(8),EPT(8),VZPT(8),VYPT(8),TTEST(8)
-      DIMENSION DZTF(8),DXTF(8),DYTF(8),DYZTF(8),WRZ(8),WRY(8),ANTPL(8)
-C----------------------------------------------------------
-C CALCULATES TIME OF FLIGHT COEFFICIENTS
-C---------------------------------------------
-      ANTPL(1)=DFLOAT(NETPL(1))
-      WRZ(1)=ZTPL(1)/(ANTPL(1)*TSTEP)
-      WRY(1)=YTPL(1)/(ANTPL(1)*TSTEP)
-      DZTF(1)=((ZZTPL(1)/ANTPL(1))-(ZTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DXTF(1)=((XXTPL(1)/ANTPL(1))-(XTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DYTF(1)=((YYTPL(1)/ANTPL(1))-(YTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DYZTF(1)=((YZTPL(1)/ANTPL(1))-(YTPL(1)*ZTPL(1)/(ANTPL(1)**2)))/(2
-     /.0D0*TSTEP) 
-      DO 10 I=2,ITFINAL
-      ANTPL(I)=DFLOAT(NETPL(I)) 
-      WRZ(I)=((ZTPL(I)/ANTPL(I))-(ZTPL(I-1)/ANTPL(I-1)))/TSTEP
-      WRY(I)=((YTPL(I)/ANTPL(I))-(YTPL(I-1)/ANTPL(I-1)))/TSTEP
-      DZTF(I)=((ZZTPL(I)/ANTPL(I))-(ZTPL(I)/ANTPL(I))**2-(ZZTPL(I-1)/ANT
-     /PL(I-1))+(ZTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DXTF(I)=((XXTPL(I)/ANTPL(I))-(XTPL(I)/ANTPL(I))**2-(XXTPL(I-1)/ANT
-     /PL(I-1))+(XTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DYTF(I)=((YYTPL(I)/ANTPL(I))-(YTPL(I)/ANTPL(I))**2-(YYTPL(I-1)/ANT
-     /PL(I-1))+(YTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DYZTF(I)=((YZTPL(I)/ANTPL(I))-(YTPL(I)*ZTPL(I)/(ANTPL(I)**2))-(YZT
-     /PL(I-1)/ANTPL(I-1))+(YTPL(I-1)*ZTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
-     /TSTEP)
-  10  CONTINUE  
-      DO 15 I=1,ITFINAL
-      WRZ(I)=WRZ(I)*1.0D+09
-      WRY(I)=WRY(I)*1.0D+09
-      DZTF(I)=DZTF(I)*1.0D+16
-      DXTF(I)=DXTF(I)*1.0D+16
-      DYTF(I)=DYTF(I)*1.0D+16
-      DYZTF(I)=DYZTF(I)*1.0D+16
-  15  CONTINUE
-      WRITE(6,900) ITFINAL
- 900  FORMAT(2(/),' TIME OF FLIGHT RESULTS AT',I2,' SEQUENTIAL TIME PLAN
-     /ES',/,'PLANE    DZZ      DXX      DYY      DYZ        WRZ         
-     /WRY',/)
-      DO 20 IPL=1,ITFINAL   
-      WRITE(6,910) IPL,DZTF(IPL),DXTF(IPL),DYTF(IPL),DYZTF(IPL),WRZ(IPL)
-     /,WRY(IPL)  
- 910  FORMAT(1X,I2,2X,4F9.1,4X,F8.2,4X,F8.2)
-  20  CONTINUE    
-      IF(NETPL(1).GT.NETPL(ITFINAL)) THEN
-C        NET ATTACHMENT TAKE RESULTS FROM PLANE 2
-       TOFENE=EPT(2)
-       TOFENER=100.0D0*DABS((EPT(2)-EPT(3))/(2.0D0*EPT(2)))
-       TOFWVZ=VZPT(2)
-       TOFWVZER=100.0D0*DABS((VZPT(2)-VZPT(3))/(2.0D0*VZPT(2))) 
-       TOFWVY=VYPT(2)
-       TOFWVYER=100.0D0*DABS((VYPT(2)-VYPT(3))/(2.0D0*VYPT(2))) 
-       TOFDZZ=DZTF(2)
-       TOFDZZER=100.0D0*DABS((DZTF(2)-DZTF(3))/(2.0D0*DZTF(2)))
-       TOFDXX=DXTF(2)
-       TOFDXXER=100.0D0*DABS((DXTF(2)-DXTF(3))/(2.0D0*DXTF(2)))
-       TOFDYY=DYTF(2)
-       TOFDYYER=100.0D0*DABS((DYTF(2)-DYTF(3))/(2.0D0*DYTF(2)))
-       TOFDYZ=DYZTF(2)
-       TOFDYZER=100.0D0*DABS((DYZTF(2)-DYZTF(3))/(2.0D0*DYZTF(2)))
-       TOFWRZ=WRZ(2)
-       TOFWRY=WRY(2)
-       TOFWRZER=100.0D0*DABS((WRZ(2)-WRZ(3))/(2.0D0*WRZ(2)))
-       TOFWRYER=100.0D0*DABS((WRY(2)-WRY(3))/(2.0D0*WRY(2))) 
-        ANST2=DFLOAT(NETPL(2))
-        ANST3=DFLOAT(NETPL(3))
-        ANST4=ANST3-DSQRT(ANST3)
-        ANST5=DLOG(ANST2/ANST3)
-        ANST6=DLOG(ANST2/ANST4)
-        ANST7=ANST6/ANST5
-        ANST8=ANST7-1.0D0
-       IF(ATTOINT.EQ.-1.0D0) THEN
-C        NO IONISATION
-        RALPHA=0.0D0
-        RALPER=0.0D0
-        RATTOF=-RI(2)
-        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
-       ELSE
-        RALPHA=RI(2)/(1.0D0-ATTOINT)
-        RALPER=100.0D0*DSQRT(ANST8**2+AIOERT**2)
-        RATTOF=ATTOINT*RI(2)/(1.0D0-ATTOINT)
-        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
-       ENDIF 
-      ELSE
-C NET IONISATION TAKE RESULTS FROM PLANE ITFINAL
-       I1=ITFINAL
-       I2=ITFINAL-1  
-       TOFENE=EPT(I1)
-       TOFENER=100.0D0*DABS((EPT(I1)-EPT(I2))/(2.0D0*EPT(I1)))
-       TOFWVZ=VZPT(I1)
-       TOFWVZER=100.0D0*DABS((VZPT(I1)-VZPT(I2))/(2.0D0*VZPT(I1)))
-       TOFWVY=VYPT(I1)
-       TOFWVYER=100.0D0*DABS((VYPT(I1)-VYPT(I2))/(2.0D0*VYPT(I1)))
-       TOFDZZ=DZTF(I1)
-       TOFDZZER=100.0D0*DABS((DZTF(I1)-DZTF(I2))/(2.0D0*DZTF(I1)))
-       TOFDXX=DXTF(I1)
-       TOFDXXER=100.0D0*DABS((DXTF(I1)-DXTF(I2))/(2.0D0*DXTF(I1)))
-       TOFDYY=DYTF(I1)
-       TOFDYYER=100.0D0*DABS((DYTF(I1)-DYTF(I2))/(2.0D0*DYTF(I1)))
-       TOFDYZ=DYZTF(I1)
-       TOFDYZER=100.0D0*DABS((DYZTF(I1)-DYZTF(I2))/(2.0D0*DYZTF(I1)))
-       TOFWRZ=WRZ(I1)
-       TOFWRY=WRY(I1)
-       TOFWRZER=100.0D0*DABS((WRZ(I1)-WRZ(I2))/(2.0D0*WRZ(I1)))
-       TOFWRYER=100.0D0*DABS((WRY(I1)-WRY(I2))/(2.0D0*WRY(I1)))
-       ATER=DABS((RI(I1)-RI(I2))/(2.0D0*RI(I1)))
-       RALPHA=RI(I1)/(1.0D0-ATTOINT)
-       RALPER=100.0D0*DSQRT(ATER**2+AIOERT**2)
-       RATTOF=ATTOINT*RI(I1)/(1.0D0-ATTOINT)
-       IF(ATTOINT.NE.0.0D0) THEN
-        RATOFER=100.0D0*DSQRT(ATER**2+ATTERT**2)
-       ELSE
-        RATOFER=0.0D0
-       ENDIF  
-      ENDIF
-      RETURN
-      END                
       SUBROUTINE ALPCLCC   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX 
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/TOFHOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
      /TOFWVY,TOFWVYER,TOFWVX,TOFWVXER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,
      /TOFDYY,TOFDYYER,TOFDYZ,TOFDYZER,TOFDXY,TOFDXYER,TOFDXZ,TOFDXZER,
@@ -6632,12 +14409,11 @@ C-----------------------------------------------
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG
       COMMON/ROTS/RCS,RSN,EFZ100,EFX100,F1,EOVBR                        
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
@@ -7228,215 +15004,10 @@ C ROTATE VELOCITIES
       NETPL(IPLANE)=NETPL(IPLANE)+1 
       RETURN
       END 
-      SUBROUTINE PTH
-      IMPLICIT REAL*8 (A-H,O-Z) 
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/ROTS/RCS,RSN,EFZ100,EFX100,F1,EOVBR                 
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/TPLOUTH/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
-     /YYTPL(8),ZZTPL(8),YZTPL(8),XZTPL(8),XYTPL(8),VZTPL(8),VYTPL(8),
-     /VXTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT
-      COMMON/PTTOFH/RI(8),EPT(8),VZPT(8),VYPT(8),VXPT(8),TTEST(8)
-      DIMENSION ANTPL(8)
-C ------------------------------------------------
-C CALCULATES PULSED TOWNSEND COEFFICIENTS
-C-------------------------------------------------
-      ANTPL(1)=DFLOAT(NETPL(1))
-      RI(1)=(DLOG(ANTPL(1))-DLOG(DFLOAT(IPRIM)))/TSTEP
-      EPT(1)=ETPL(1)/ANTPL(1)
-      TTEST(1)=TTPL(1)/ANTPL(1)
-      VZPT(1)=1.0D+09*VZTPL(1)/ANTPL(1)
-      VYPT(1)=1.0D+09*VYTPL(1)/ANTPL(1)
-      VXPT(1)=1.0D+09*VXTPL(1)/ANTPL(1)
-      DO 10 I=2,ITFINAL
-      IF(NETPL(I).EQ.0) THEN
-       ITFINAL=I-1
-       GO TO 11
-      ENDIF
-      ANTPL(I)=DFLOAT(NETPL(I))      
-      RI(I)=(DLOG(ANTPL(I))-DLOG(ANTPL(I-1)))/TSTEP
-      EPT(I)=ETPL(I)/ANTPL(I)
-      TTEST(I)=TTPL(I)/ANTPL(I)
-      VZPT(I)=1.0D+09*VZTPL(I)/ANTPL(I)
-      VYPT(I)=1.0D+09*VYTPL(I)/ANTPL(I)
-      VXPT(I)=1.0D+09*VXTPL(I)/ANTPL(I)
-  10  CONTINUE
-  11  WRITE(6,900) ITFINAL
- 900  FORMAT(2(/),' PULSED TOWNSEND RESULTS AT',I2,' SEQUENTIAL TIME PLA
-     /NES',/,'PLANE   (ION-ATT)FRQ.    ENERGY      WVZ       WVY       W
-     /VX  NO.OF ELECTRNS',/)   
-      DO 20 IPL=1,ITFINAL
-      WRITE(6,910) IPL,RI(IPL),EPT(IPL),VZPT(IPL),VYPT(IPL),VXPT(IPL),
-     /NETPL(IPL)
- 910  FORMAT(1X,I2,4X,D12.4,4X,F7.2,4X,F6.1,4X,F6.1,4X,F6.1,4X,I8)
-  20  CONTINUE 
-      RETURN
-      END
-      SUBROUTINE TOFH
-      IMPLICIT REAL*8 (A-H,O-Z)                                         
-      IMPLICIT INTEGER*8 (I-N)
-      COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
-      COMMON/TPLOUTH/ETPL(8),XTPL(8),YTPL(8),ZTPL(8),TTPL(8),XXTPL(8),
-     /YYTPL(8),ZZTPL(8),YZTPL(8),XZTPL(8),XYTPL(8),VZTPL(8),VYTPL(8),
-     /VXTPL(8),NETPL(8),ATTOINT,ATTERT,AIOERT 
-      COMMON/TOFHOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWVZ,TOFWVZER,
-     /TOFWVY,TOFWVYER,TOFWVX,TOFWVXER,TOFDZZ,TOFDZZER,TOFDXX,TOFDXXER,
-     /TOFDYY,TOFDYYER,TOFDYZ,TOFDYZER,TOFDXY,TOFDXYER,TOFDXZ,TOFDXZER,
-     /TOFWRZ,TOFWRZER,TOFWRY,TOFWRYER,TOFWRX,TOFWRXER,RATTOF,RATOFER 
-      COMMON/PTTOFH/RI(8),EPT(8),VZPT(8),VYPT(8),VXPT(8),TTEST(8)
-      DIMENSION DZTF(8),DXTF(8),DYTF(8),DYZTF(8),DXYTF(8),DXZTF(8)
-      DIMENSION WRZ(8),WRY(8),WRX(8),ANTPL(8) 
-C----------------------------------------------------------
-C CALCULATES TIME OF FLIGHT COEFFICIENTS
-C---------------------------------------------
-      ANTPL(1)=DFLOAT(NETPL(1))
-      WRZ(1)=ZTPL(1)/(ANTPL(1)*TSTEP)
-      WRY(1)=YTPL(1)/(ANTPL(1)*TSTEP)
-      WRX(1)=XTPL(1)/(ANTPL(1)*TSTEP)
-      DZTF(1)=((ZZTPL(1)/ANTPL(1))-(ZTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DXTF(1)=((XXTPL(1)/ANTPL(1))-(XTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DYTF(1)=((YYTPL(1)/ANTPL(1))-(YTPL(1)/ANTPL(1))**2)/(2.0D0*TSTEP)
-      DYZTF(1)=((YZTPL(1)/ANTPL(1))-(YTPL(1)*ZTPL(1)/(ANTPL(1)**2)))/(2
-     /.0D0*TSTEP) 
-      DXZTF(1)=((XZTPL(1)/ANTPL(1))-(XTPL(1)*ZTPL(1)/(ANTPL(1)**2)))/(2
-     /.0D0*TSTEP) 
-      DXYTF(1)=((XYTPL(1)/ANTPL(1))-(XTPL(1)*YTPL(1)/(ANTPL(1)**2)))/(2
-     /.0D0*TSTEP) 
-      DO 10 I=2,ITFINAL
-      ANTPL(I)=DFLOAT(NETPL(I)) 
-      WRZ(I)=((ZTPL(I)/ANTPL(I))-(ZTPL(I-1)/ANTPL(I-1)))/TSTEP
-      WRY(I)=((YTPL(I)/ANTPL(I))-(YTPL(I-1)/ANTPL(I-1)))/TSTEP
-      WRX(I)=((XTPL(I)/ANTPL(I))-(XTPL(I-1)/ANTPL(I-1)))/TSTEP
-      DZTF(I)=((ZZTPL(I)/ANTPL(I))-(ZTPL(I)/ANTPL(I))**2-(ZZTPL(I-1)/ANT
-     /PL(I-1))+(ZTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DXTF(I)=((XXTPL(I)/ANTPL(I))-(XTPL(I)/ANTPL(I))**2-(XXTPL(I-1)/ANT
-     /PL(I-1))+(XTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DYTF(I)=((YYTPL(I)/ANTPL(I))-(YTPL(I)/ANTPL(I))**2-(YYTPL(I-1)/ANT
-     /PL(I-1))+(YTPL(I-1)/ANTPL(I-1))**2)/(2.0D0*TSTEP)
-      DYZTF(I)=((YZTPL(I)/ANTPL(I))-(YTPL(I)*ZTPL(I)/(ANTPL(I)**2))-(YZT
-     /PL(I-1)/ANTPL(I-1))+(YTPL(I-1)*ZTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
-     /TSTEP)
-      DXZTF(I)=((XZTPL(I)/ANTPL(I))-(XTPL(I)*ZTPL(I)/(ANTPL(I)**2))-(XZT
-     /PL(I-1)/ANTPL(I-1))+(XTPL(I-1)*ZTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
-     /TSTEP)
-      DXYTF(I)=((XYTPL(I)/ANTPL(I))-(XTPL(I)*YTPL(I)/(ANTPL(I)**2))-(XYT
-     /PL(I-1)/ANTPL(I-1))+(XTPL(I-1)*YTPL(I-1)/(ANTPL(I-1)**2)))/(2.0D0*
-     /TSTEP)
-  10  CONTINUE  
-      DO 15 I=1,ITFINAL
-      WRZ(I)=WRZ(I)*1.0D+09
-      WRY(I)=WRY(I)*1.0D+09
-      WRX(I)=WRX(I)*1.0D+09
-      DZTF(I)=DZTF(I)*1.0D+16
-      DXTF(I)=DXTF(I)*1.0D+16
-      DYTF(I)=DYTF(I)*1.0D+16
-      DYZTF(I)=DYZTF(I)*1.0D+16
-      DXZTF(I)=DXZTF(I)*1.0D+16
-      DXYTF(I)=DXYTF(I)*1.0D+16
-  15  CONTINUE
-      WRITE(6,900) ITFINAL
- 900  FORMAT(2(/),' TIME OF FLIGHT RESULTS AT',I2,' SEQUENTIAL TIME PLAN
-     /ES',/,'PLANE    DZZ     DXX     DYY     DYZ     DXZ     DXY      W
-     /RZ     WRY     WRX',/)
-      DO 20 IPL=1,ITFINAL   
-      WRITE(6,910) IPL,DZTF(IPL),DXTF(IPL),DYTF(IPL),DYZTF(IPL),        
-     /DXZTF(IPL),DXYTF(IPL),WRZ(IPL),WRY(IPL),WRX(IPL)  
- 910  FORMAT(1X,I2,2X,6F8.1,3F8.2)              
-  20  CONTINUE    
-      IF(NETPL(1).GT.NETPL(ITFINAL)) THEN
-C        NET ATTACHMENT TAKE RESULTS FROM PLANE 2
-       TOFENE=EPT(2)
-       TOFENER=100.0D0*DABS((EPT(2)-EPT(3))/(2.0D0*EPT(2)))
-       TOFWVZ=VZPT(2)
-       TOFWVZER=100.0D0*DABS((VZPT(2)-VZPT(3))/(2.0D0*VZPT(2))) 
-       TOFWVY=VYPT(2)
-       TOFWVYER=100.0D0*DABS((VYPT(2)-VYPT(3))/(2.0D0*VYPT(2))) 
-       TOFWVX=VXPT(2)
-       TOFWVXER=100.0D0*DABS((VXPT(2)-VXPT(3))/(2.0D0*VXPT(2)))
-       TOFDZZ=DZTF(2)
-       TOFDZZER=100.0D0*DABS((DZTF(2)-DZTF(3))/(2.0D0*DZTF(2)))
-       TOFDXX=DXTF(2)
-       TOFDXXER=100.0D0*DABS((DXTF(2)-DXTF(3))/(2.0D0*DXTF(2)))
-       TOFDYY=DYTF(2)
-       TOFDYYER=100.0D0*DABS((DYTF(2)-DYTF(3))/(2.0D0*DYTF(2)))
-       TOFDYZ=DYZTF(2)
-       TOFDYZER=100.0D0*DABS((DYZTF(2)-DYZTF(3))/(2.0D0*DYZTF(2)))
-       TOFDXZ=DXZTF(2)
-       TOFDXZER=100.0D0*DABS((DXZTF(2)-DXZTF(3))/(2.0D0*DXZTF(2)))
-       TOFDXY=DXYTF(2)
-       TOFDXYER=100.0D0*DABS((DXYTF(2)-DXYTF(3))/(2.0D0*DXYTF(2)))
-       TOFWRZ=WRZ(2)
-       TOFWRY=WRY(2)
-       TOFWRX=WRX(2)
-       TOFWRZER=100.0D0*DABS((WRZ(2)-WRZ(3))/(2.0D0*WRZ(2)))
-       TOFWRYER=100.0D0*DABS((WRY(2)-WRY(3))/(2.0D0*WRY(2))) 
-       TOFWRXER=100.0D0*DABS((WRX(2)-WRX(3))/(2.0D0*WRX(2)))
-        ANST2=DFLOAT(NETPL(2))
-        ANST3=DFLOAT(NETPL(3))
-        ANST4=ANST3-DSQRT(ANST3)
-        ANST5=DLOG(ANST2/ANST3)
-        ANST6=DLOG(ANST2/ANST4)
-        ANST7=ANST6/ANST5
-        ANST8=ANST7-1.0D0
-       IF(ATTOINT.EQ.-1.0D0) THEN
-C        NO IONISATION
-        RALPHA=0.0D0
-        RALPER=0.0D0
-        RATTOF=-RI(2)
-        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
-       ELSE
-        RALPHA=RI(2)/(1.0D0-ATTOINT)
-        RALPER=100.0D0*DSQRT(ANST8**2+AIOERT**2)
-        RATTOF=ATTOINT*RI(2)/(1.0D0-ATTOINT)
-        RATOFER=100.0D0*DSQRT(ANST8**2+ATTERT**2)
-       ENDIF 
-      ELSE
-C NET IONISATION TAKE RESULTS FROM PLANE ITFINAL
-       I1=ITFINAL
-       I2=ITFINAL-1  
-       TOFENE=EPT(I1)
-       TOFENER=100.0D0*DABS((EPT(I1)-EPT(I2))/(2.0D0*EPT(I1)))
-       TOFWVZ=VZPT(I1)
-       TOFWVZER=100.0D0*DABS((VZPT(I1)-VZPT(I2))/(2.0D0*VZPT(I1)))
-       TOFWVY=VYPT(I1)
-       TOFWVYER=100.0D0*DABS((VYPT(I1)-VYPT(I2))/(2.0D0*VYPT(I1)))
-       TOFWVX=VXPT(I1)
-       TOFWVXER=100.0D0*DABS((VXPT(I1)-VXPT(I2))/(2.0D0*VXPT(I1)))
-       TOFDZZ=DZTF(I1)
-       TOFDZZER=100.0D0*DABS((DZTF(I1)-DZTF(I2))/(2.0D0*DZTF(I1)))
-       TOFDXX=DXTF(I1)
-       TOFDXXER=100.0D0*DABS((DXTF(I1)-DXTF(I2))/(2.0D0*DXTF(I1)))
-       TOFDYY=DYTF(I1)
-       TOFDYYER=100.0D0*DABS((DYTF(I1)-DYTF(I2))/(2.0D0*DYTF(I1)))
-       TOFDYZ=DYZTF(I1)
-       TOFDYZER=100.0D0*DABS((DYZTF(I1)-DYZTF(I2))/(2.0D0*DYZTF(I1)))
-       TOFDXZ=DXZTF(I1)
-       TOFDXZER=100.0D0*DABS((DXZTF(I1)-DXZTF(I2))/(2.0D0*DXZTF(I1)))
-       TOFDXY=DXYTF(I1)
-       TOFDXYER=100.0D0*DABS((DXYTF(I1)-DXYTF(I2))/(2.0D0*DXYTF(I1)))
-       TOFWRZ=WRZ(I1)
-       TOFWRY=WRY(I1)
-       TOFWRX=WRX(I1)
-       TOFWRZER=100.0D0*DABS((WRZ(I1)-WRZ(I2))/(2.0D0*WRZ(I1)))
-       TOFWRYER=100.0D0*DABS((WRY(I1)-WRY(I2))/(2.0D0*WRY(I1)))
-       TOFWRXER=100.0D0*DABS((WRX(I1)-WRX(I2))/(2.0D0*WRX(I1)))
-       ATER=DABS((RI(I1)-RI(I2))/(2.0D0*RI(I1)))
-       RALPHA=RI(I1)/(1.0D0-ATTOINT)
-       RALPER=100.0D0*DSQRT(ATER**2+AIOERT**2)
-       RATTOF=ATTOINT*RI(I1)/(1.0D0-ATTOINT)
-       IF(ATTOINT.NE.0.0D0) THEN
-        RATOFER=100.0D0*DSQRT(ATER**2+ATTERT**2)
-       ELSE
-        RATOFER=0.0D0
-       ENDIF  
-      ENDIF
-      RETURN
-      END                
       SUBROUTINE ALPCLCA 
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX 
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/TOFOUT/RALPHA,RALPER,TOFENE,TOFENER,TOFWV,TOFWVER,
      /TOFDL,TOFDLER,TOFDT,TOFDTER,TOFWR,TOFWRER,RATTOF,RATOFER 
       COMMON/VEL/WX,WY,WZ
@@ -7506,11 +15077,10 @@ C-----------------------------------------------
       IMPLICIT INTEGER*8 (I-N)
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
       COMMON/CNSTS1/CONST1,CONST2,CONST3,CONST4,CONST5                  
-      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,TCFMAX(8),RSTART,
-     /EFIELD,NMAX 
+      COMMON/SETP/TMAX,SMALL,API,ESTART,THETA,PHI,RSTART,EFIELD,NMAX 
       COMMON/BFLD/EOVB,WB,BTHETA,BMAG                                   
       COMMON/LARGE/CF(4000,512),EIN(512),TCF(4000),IARRY(512),RGAS(512),
-     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512)
+     /IPN(512),WPL(512),IPLAST,ISIZE,PENFRA(3,512),TCFMAX(8)
       COMMON/CION/ALPHAST,VDST,TSTEP,ZSTEP,TFINAL,ZFINAL,ITFINAL,IPRIM
       COMMON/OUTPT/TIME(300),ICOLL(30),SPEC(4000),TMAX1,
      /AVE,DEN,XID,X,Y,Z,ST,NNULL,ICOLN(512)
@@ -7890,7 +15460,8 @@ C ISOTROPIC SCATTERING
       PHI0=F4*R4                                                        
       F8=DSIN(PHI0)                                                     
       F9=DCOS(PHI0)                                                     
-      IF(E.LT.EI) EI=0.0D0                                              
+C     IF(E.LT.EI) EI=0.0D0   
+      IF(E.LT.EI) EI=E                                           
       ARG1=1.0D0-S1*EI/E                                                
       ARG1=DMAX1(ARG1,SMALL)                                            
       D=1.0D0-F3*DSQRT(ARG1)                                            
@@ -8035,6 +15606,8 @@ C CALC TIME LEFT TO ARRIVE AT PLANE
       NETPL(IPLANE)=NETPL(IPLANE)+1 
       RETURN
       END
+
+
       DOUBLE PRECISION FUNCTION DMAX0(IA,IB)
       INTEGER *8 IA,IB
       IF(IA.LT.IB) THEN
@@ -8233,19 +15806,20 @@ C           Entry to output current status
       RETURN
       END
       SUBROUTINE GAS1(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(132),YELM(132),YELT(132),YEPS(132),
      /XVBV4(17),YVBV4(17),XVBV1(17),YVBV1(17),XVBV3(17),YVBV3(17),
      /XVIB5(18),YVIB5(18),XVIB6(18),YVIB6(18),
      /XEXC(31),YEXC(31),XION(52),YION(52),YINC(52),XATT(11),YATT(11)
-      CHARACTER*30 SCRPT(226) 
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260) 
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.0,.001,.002,.003,.004,.005,.006,.007,.008,.009,        
      /0.01,.012,.014,.016,.018,0.02,.025,0.03,.035,0.04,                
      /.045,0.05,.055,0.06,.065,0.07,.075,0.08,.085,0.09,                
@@ -8414,6 +15988,7 @@ C  BORN BETHE FOR EXCITATION
       AM2EXC=1.6 
       CEXC=20.7
 C 
+      NION=1
       NIN=11  
       DO 1 J=1,6
     1 KEL(J)=NANISO
@@ -8438,7 +16013,7 @@ C
       NVBV3=17                                                          
       NVIB5=18                                                          
       NVIB6=18
-      NION=52                                                           
+      NIOND=52                                                           
       NATT=11                                                           
       NEXC=31 
 C                                                          
@@ -8559,16 +16134,16 @@ C  GROSS IONISATION
       PEQEL(3,I)=0.5
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0                             
       IF(EN.LE.E(3)) GO TO 200
-      IF(EN.GT.XION(NION)) GO TO 123                                
-      DO 110 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 123                                
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16
       GO TO 124
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
   123 GAMMA=(EMASS2+2.0D0*EN)/EMASS2
       BETA=DSQRT(1.0D0-1.0D0/(GAMMA*GAMMA))
       BETA2=BETA*BETA
@@ -8598,16 +16173,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0
       IF(EN.LE.E(3)) GO TO 300
-      IF(EN.GT.XION(NION)) GO TO 280
-      DO 260 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 280
+      DO 260 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 270
   260 CONTINUE
-      J=NION
+      J=NIOND
   270 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))
       Q(5,I)=(A*EN+B)*1.D-16
       GO TO 290
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
   280 Q(5,I)=CONST*(AM2*X1+C*X2)
   290 CONTINUE
 C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON AT
@@ -8803,13 +16378,14 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS2(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6) 
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8) 
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(60),YSEC(60),YEL(60),XEPS(160),YEPS(160),
      /XENI(75),YENI(75),YENC(75),
      /X1S5(71),Y1S5(71),YEPS1(71),X1S4(113),Y1S4(113),YEPS2(113),
@@ -8828,8 +16404,8 @@ C  SAVE COMPUTE TIME
      /X3S1PP(21),Y3S1PP(21),YEP3S1PP(21),X2S5(19),Y2S5(19),YEP2S5(19),
      /X2S3(19),Y2S3(19),YEP2S3(19),
      /IOFFN(44)
-      CHARACTER*30 SCRPT(226)                         
-      CHARACTER*15 NAME                
+      CHARACTER*50 SCRPT(260)                         
+      CHARACTER*25 NAME                
 C  ENERGY                                       
       DATA XEN/1.00,1.20,1.50,1.70,2.00,2.50,3.00,4.00,5.00,6.00,
      /7.00,8.00,9.00,10.0,11.0,12.0,13.0,14.0,15.0,16.0,
@@ -9214,7 +16790,8 @@ C
       CONST=1.873884D-20
       AM2=3.593
       C=39.70  
-C                                                                  
+C                
+      NION=1                                                  
       NIN=44 
       DO 1 J=1,6
     1 KEL(J)=NANISO
@@ -10025,13 +17602,14 @@ C
       RETURN                                                            
       END 
       SUBROUTINE GAS3(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)      
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)      
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(100),YEM(100),YEL(100),YEPS(100),
      /XION(90),YION(90),YINC(90),
      /X23S(139),Y23S(139),X21S(128),Y21S(128),X23P(128),Y23P(128),
@@ -10041,8 +17619,8 @@ C
      /X43P(76),Y43P(76),X43D(65),Y43D(65),X41D(53),Y41D(53),
      /X43F(40),Y43F(40),X41F(57),Y41F(57),X41P(96),Y41P(96),
      /IOFFN(49)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME  
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME  
 C ELASTIC                            
       DATA XEN/0.00,.008,.009,0.01,.013,.017,.020,.025,0.03,0.04, 
      /0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.15,0.18,0.20,                
@@ -10539,6 +18117,7 @@ C 12 1P RESONANCE RADIATION J=1  50.620 NM      F=0.00106
 C SUM HIGHER 1P LEVELS RESONANCE RADIATION J=1  F=0.00440
 C TOTAL SUM OSCILLATOR STRENGTH = 0.42326
 C --------------------------------------------------------------------
+      NANISO=0
       IF(NANISO.EQ.0) THEN
        NAME='HE4 (ISOT) 2010'   
       ELSE 
@@ -10570,13 +18149,14 @@ C
       AM2=0.489
       C=5.50 
 C
+      NION=1
       NIN=49
       DO 1 J=1,6
     1 KEL(J)=NANISO
       DO 2 J=1,NIN
     2 KIN(J)=NANISO
       NDATA=100
-      NION=90                                                           
+      NIOND=90                                                          
       N23S=139          
       N21S=128
       N23P=128          
@@ -10780,16 +18360,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5D0  
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0                               
       IF(EN.LE.E(3)) GO TO 200 
-      IF(EN.GT.XION(NION)) GO TO 121     
-      DO 110 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 121     
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16 
       GO TO 122
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   121 AX2=1.0D0/BETA2
       AX1=AX2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
       Q(3,I)=CONST*(AM2*AX1+C*AX2)/0.995
@@ -10807,16 +18387,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0D0
       IF(EN.LE.E(3)) GO TO 250
-      IF(EN.GT.XION(NION)) GO TO 241
-      DO 230 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 241
+      DO 230 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 240
   230 CONTINUE
-      J=NION
+      J=NIOND
   240 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))      
       Q(5,I)=(A*EN+B)*1.0D-16
       GO TO 242
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   241 Q(5,I)=CONST*(AM2*AX1+C*AX2)
   242 CONTINUE  
       IF(EN.LE.(2.0D0*E(3))) GO TO 250
@@ -11728,13 +19308,14 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END
       SUBROUTINE GAS4(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)      
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)      
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(100),YEM(100),YEL(100),YEPS(100),
      /XION(90),YION(90),YINC(90),
      /X23S(139),Y23S(139),X21S(128),Y21S(128),X23P(128),Y23P(128),
@@ -11744,8 +19325,8 @@ C  SAVE COMPUTE TIME
      /X43P(76),Y43P(76),X43D(65),Y43D(65),X41D(53),Y41D(53),
      /X43F(40),Y43F(40),X41F(57),Y41F(57),X41P(96),Y41P(96),
      /IOFFN(49)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME  
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME  
 C ELASTIC                            
       DATA XEN/0.00,.008,.009,0.01,.013,.017,.020,.025,0.03,0.04, 
      /0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.15,0.18,0.20,                
@@ -12274,13 +19855,14 @@ C
       AM2=0.489
       C=5.50 
 C
+      NION=1
       NIN=49
       DO 1 J=1,6
     1 KEL(J)=NANISO
       DO 2 J=1,NIN
     2 KIN(J)=NANISO
       NDATA=100
-      NION=90                                                           
+      NIOND=90                                                          
       N23S=139          
       N21S=128
       N23P=128          
@@ -12484,16 +20066,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5D0  
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0                               
       IF(EN.LE.E(3)) GO TO 200 
-      IF(EN.GT.XION(NION)) GO TO 121     
-      DO 110 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 121     
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                          
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16 
       GO TO 122
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   121 AX2=1.0D0/BETA2
       AX1=AX2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
       Q(3,I)=CONST*(AM2*AX1+C*AX2)/0.995
@@ -12511,16 +20093,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0D0
       IF(EN.LE.E(3)) GO TO 250
-      IF(EN.GT.XION(NION)) GO TO 241
-      DO 230 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 241
+      DO 230 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 240
   230 CONTINUE
-      J=NION
+      J=NIOND
   240 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))      
       Q(5,I)=(A*EN+B)*1.0D-16
       GO TO 242
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   241 Q(5,I)=CONST*(AM2*AX1+C*AX2)
   242 CONTINUE  
       IF(EN.LE.(2.0D0*E(3))) GO TO 250
@@ -13432,13 +21014,14 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END
       SUBROUTINE GAS5(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)                                         
       IMPLICIT INTEGER*8 (I-N)
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)      
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)     
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(87),YXSEC(87),XEL(84),YEL(84),XEPS(158),YEPS(158),
      /XION(74),YION(74),YINC(74),
      /X1S5(111),Y1S5(111),X1S4(137),Y1S4(137),X1S3(117),Y1S3(117),
@@ -13452,8 +21035,8 @@ C  SAVE COMPUTE TIME
      /X3S1PPP(12),Y3S1PPP(12),X3S1PP(12),Y3S1PP(12),
      /X3P106(16),Y3P106(16),X3P52(16),Y3P52(16),X3P1(16),Y3P1(16),
      /IOFFN(45)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME  
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME  
 C ELASTIC MOMENTUM TRANSFER                          
       DATA XEN/1.00,1.20,1.50,1.80,2.00,2.50,3.00,4.00,5.00,6.00,       
      /7.00,8.00,8.71,9.00,10.0,11.0,13.6,15.0,16.5,19.6,                
@@ -13984,7 +21567,8 @@ C BORN BETHE VALUES FOR IONISATION
 C
       AM2=1.69 
       C=17.80     
-C                                           
+C     
+      NION=1                                      
       NIN=45
       DO 1 J=1,6
     1 KEL(J)=NANISO 
@@ -13994,7 +21578,7 @@ C
       NEL=84                                                            
       NDATA=87 
       NEPSI=158                                                        
-      NION=74                                                           
+      NIOND=74                                                         
       N1S5=111
       N1S4=137
       N1S3=117
@@ -14144,7 +21728,7 @@ C*****************************************************************
       SCRPT(33)='EX 3S1!!!! J=2  ELVL= 20.13611'
       SCRPT(34)='EX 3S1!!! J=3   ELVL= 20.13629'
       SCRPT(35)='EX  3S1!! J=2   ELVL= 20.13751'
-      SCRPT(36)='EX   3S1! J=1   ELVL= 20.13946'
+      SCRPT(36)='EX   3S1! J=1 R ELVL= 20.13946'
       SCRPT(37)='EX SUM 3P10-6   ELVL= 20.14965'
       SCRPT(38)='EX SUM 3P5-2    ELVL= 20.25918'
       SCRPT(39)='EX   3P1  J=0   ELVL= 20.36885'
@@ -14242,16 +21826,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5D0   
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0                                  
       IF(EN.LE.E(3)) GO TO 200 
-      IF(EN.GT.XION(NION)) GO TO 121 
-      DO 110 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 121 
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.0D-16               
       GO TO 122
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
   121 AX2=1.0D0/BETA2
       AX1=AX2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
       Q(3,I)=CONST*(AM2*AX1+C*AX2)/0.951
@@ -14269,16 +21853,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0D0
       IF(EN.LE.E(3)) GO TO 250
-      IF(EN.GT.XION(NION)) GO TO 241
-      DO 230 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 241
+      DO 230 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 240
   230 CONTINUE
-      J=NION
+      J=NIOND
   240 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))
       Q(5,I)=(A*EN+B)*1.0D-16
       GO TO 242
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
   241 Q(5,I)=CONST*(AM2*AX1+C*AX2)
   242 CONTINUE                                                   
 C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR
@@ -14867,13 +22451,14 @@ C  SAVE COMPUTING TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS6(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)    
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)     
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(116),YXSEC(116),XEL(130),YEL(130),
      /XEPS(140),YEPS(140),XION(65),YION(65),YINC(65),
      /XEXC1(105),YEXC1(105),XEXC2(86),YEXC2(86),
@@ -14898,8 +22483,8 @@ C  SAVE COMPUTING TIME
      /X2S3(19),Y2S3(19),YP2S3(19),X4D1PP(19),Y4D1PP(19),YP4D1PP(19),
      /X4D1P(19),Y4D1P(19),YP4D1P(19),X3S5(19),Y3S5(19),YP3S5(19),
      /X4FS(19),Y4FS(19),YP4FS(19),IOFFN(51)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME 
 C ELASTIC MOMENTUM TRANSFER                                       
       DATA XEN/1.D-6,.001,.003,.005,.007,0.01,.015,0.02,0.03,0.04,      
      /0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.14,0.17,0.20,                
@@ -15941,6 +23526,8 @@ C
       AN3P5=0.4 
       AN3D=0.65
       AN4D=0.4
+C
+      NION=1
       NIN=51
       DO 1 J=1,6
     1 KEL(J)=NANISO
@@ -15950,7 +23537,7 @@ C
       NEL=130                                            
       NDATA=116 
       NEPSI=140                                                        
-      NION=65 
+      NIOND=65 
       N1S5=169
       N1S4=130
       N1S3=168
@@ -16194,16 +23781,16 @@ C  GROSS IONISATION X-SECTION
       PEQEL(3,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0                                 
       IF(EN.LE.E(3)) GO TO 230 
-      IF(EN.GT.XION(NION)) GO TO 221                               
-      DO 210 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 221                               
+      DO 210 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 220                                       
   210 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   220 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.0D-16
       GO TO 222
-C USE BORN BETHE ABOVE XION(NION) EV.
+C USE BORN BETHE ABOVE XION(NIOND) EV.
   221 X2=1.0D0/BETA2
       X1=X2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
       Q(3,I)=CONST*(AM2*X1+C*X2)/0.85 
@@ -16222,16 +23809,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0D0
       IF(EN.LE.E(3)) GO TO 250
-      IF(EN.GT.XION(NION)) GO TO 241
-      DO 231 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 241
+      DO 231 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 240
   231 CONTINUE
-      J=NION
+      J=NIOND
   240 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))
       Q(5,I)=(A*EN+B)*1.D-16
       GO TO 242
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV.
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV.
   241 Q(5,I)=CONST*(AM2*X1+C*X2) 
   242 CONTINUE                                                       
 C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR
@@ -16960,13 +24547,14 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END
       SUBROUTINE GAS7(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(139),YMOM(139),XEL(131),YEL(131),XEPS(139),YEPS(139)
       DIMENSION XION(76),YION(76),YINC(76)
       DIMENSION X1S5(79),Y1S5(79),YP1S5(79),X1S4(38),Y1S4(38),YP1S4(38),
@@ -16982,8 +24570,8 @@ C  SAVE COMPUTE TIME
      /X2P3(23),Y2P3(23),YP2P3(23),X2P2(23),Y2P2(23),YP2P2(23),
      /X2P1(24),Y2P1(24),YP2P1(24),
      /IOFFN(50) 
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                               
 C   ELASTIC MOMENTUM TRANSFER                                           
       DATA XEN/0.00,.001,.005,.007,0.01,.015,0.02,.025,0.03,0.04,
      /0.05,0.06,0.07,0.08,0.10,0.12,0.14,0.17,0.20,0.25, 
@@ -17407,6 +24995,7 @@ C
       C=75.25
 C   
 C
+      NION=1
       NIN=50
       DO 1 J=1,6
     1 KEL(J)=NANISO
@@ -17416,7 +25005,7 @@ C
       NDATA=139
       NEL=131   
       NEPSI=139                                                        
-      NION=76
+      NIOND=76
       N1S5=79
       N1S4=38
       N1S3=57
@@ -17636,16 +25225,16 @@ C  GROSS IONISATION
       PEQEL(3,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0                            
       IF(EN.LE.E(3)) GO TO 230     
-      IF(EN.GT.XION(NION)) GO TO 221                                   
-      DO 210 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 221                                   
+      DO 210 J=2,NIOND                                               
       IF(EN.LE.XION(J)) GO TO 220                                       
   210 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                       
   220 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.0D-16           
       GO TO 222
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   221 X2=1.0D0/BETA2
       X1=X2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
       Q(3,I)=CONST*(AM2*X1+C*X2)/0.75      
@@ -17663,16 +25252,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0D0                                  
       IF(EN.LE.E(3)) GO TO 250     
-      IF(EN.GT.XION(NION)) GO TO 241                                   
-      DO 231 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 241                                   
+      DO 231 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 240                                       
   231 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                          
   240 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))       
       Q(5,I)=(A*EN+B)*1.0D-16      
       GO TO 242
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   241 Q(5,I)=CONST*(AM2*X1+C*X2)
   242 CONTINUE   
 C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR
@@ -18166,134 +25755,129 @@ C SAVE COMPUTE TIME
   910 CONTINUE
   911 CONTINUE
       RETURN                                                            
-      END                                                              
+      END 
       SUBROUTINE GAS8(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
-      DIMENSION XEN(115),YELM(115),YELT(115),YEPS(115),XATT(6),YATT(6), 
-     /XVBV4(27),YVBV4(27),XVBV2(34),YVBV2(34),XVBV1(35),YVBV1(35),
-     /XVBV3(26),YVBV3(26),XVBH1(21),YVBH1(21),XVBH2(21),YVBH2(21),
-     /XION(70),YION(70),YINC(70),XDET(9),YDET(9),XDIS1(19),YDIS1(19),  
-     /XDIS2(32),YDIS2(32),XDIS3(31),YDIS3(31),XDIS4(29),YDIS4(29),
-     iXDIS5(16),YDIS5(16),
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6),IOFFN(33)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8),EOBY(4000)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
+      DIMENSION XEN(117),YELM(117),YELT(117),YEPS(117),XATT(6),YATT(6), 
+     /XVBV4(36),YVBV4(36),XVBV2(29),YVBV2(29),XVBV1(30),YVBV1(30),
+     /XVBV3(35),YVBV3(35),XVBH1(14),YVBH1(14),XVBH2(14),YVBH2(14),
+     /XION(70),YION(70),YINC(70),XDET(9),YDET(9),XTR1(12),YTR1(12),  
+     /XTR2(11),YTR2(11),XTR3(11),YTR3(11),
      /XCHD(42),YCHD(42),XCHB(43),YCHB(43),XHAL(42),YHAL(42),
-     /XHBE(42),YHBE(42) 
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
-      DATA XEN/0.00,.0001,.001,.004,.007,0.01,.012,.014,.017,0.02,
-     /.025,0.03,.035,0.04,0.05,0.06,0.07,0.08,0.09,0.10,               
-     /0.12,0.14,0.17,0.20,0.24,0.28,0.32,0.36,0.40,0.45,                
-     /0.50,0.60,0.70,0.80,1.00,1.20,1.40,1.70,2.00,2.50,                
-     /3.00,3.50,4.00,5.00,6.00,7.00,8.00,9.00,10.0,12.0,                
-     /15.0,20.0,30.0,40.0,50.0,60.0,80.0,100.,150.,200.,
-     /300.,400.,500.,600.,800.,1000.,1500.,2000.,3000.,4000.,
-     /5000.,6000.,7000.,8000.,9000.,1.D4,1.25D4,1.5D4,1.75D4,2.0D4,
-     /2.5D4,3.0D4,3.5D4,4.0D4,4.5D4,5.0D4,6.0D4,7.0D4,8.0D4,9.0D4,
-     /1.0D5,1.25D5,1.5D5,1.75D5,2.0D5,2.5D5,3.0D5,3.5D5,4.0D5,4.5D5,
-     /5.0D5,6.0D5,7.0D5,8.0D5,9.0D5,1.0D6,1.25D6,1.5D6,1.75D6,2.0D6,
-     /2.5D6,3.0D6,4.0D6,7.0D6,1.0D7/     
+     /XHBE(42),YHBE(42),XKSH(63),YKSH(63)
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
+      DATA XEN/0.00,.0001,.001,.002,.004,.007,0.01,.012,.014,.017,
+     /0.02,.025,0.03,.035,0.04,0.05,0.06,0.07,0.08,0.09,
+     /0.10,0.12,0.14,0.17,0.20,0.24,0.28,0.32,0.36,0.40,
+     /0.45,0.50,0.60,0.70,0.80,1.00,1.20,1.40,1.70,2.00,
+     /2.50,3.00,3.50,4.00,5.00,6.00,7.00,8.00,9.00,10.0,
+     /12.0,15.0,20.0,25.0,30.0,40.0,50.0,60.0,80.0,100.,
+     /150.,200.,300.,400.,500.,600.,800.,1000.,1500.,2000.,
+     /3000.,4000.,5000.,6000.,7000.,8000.,9000.,1.D4,1.25D4,1.5D4,
+     /1.75D4,2.0D4,2.5D4,3.0D4,3.5D4,4.0D4,4.5D4,5.0D4,6.0D4,7.0D4,
+     /8.0D4,9.0D4,1.0D5,1.25D5,1.5D5,1.75D5,2.0D5,2.5D5,3.0D5,3.5D5,
+     /4.0D5,4.5D5,5.0D5,6.0D5,7.0D5,8.0D5,9.0D5,1.0D6,1.25D6,1.5D6,
+     /1.75D6,2.0D6,2.5D6,3.0D6,4.0D6,7.0D6,1.0D7/     
 C ELASTIC MOMENTUM TRANSFER X-SECTION     
-      DATA YELM/26.7,25.4,22.6,18.8,16.5,14.8,13.9,13.0,12.0,11.0, 
-     /9.75,8.60,7.75,7.10,6.10,5.27,4.60,3.85,3.18,2.55,                
-     /1.74,1.19,0.70,.440,.300,.300,.345,.400,.470,.550,                
-     /.650,.850,1.08,1.30,1.75,2.25,2.70,3.50,4.35,6.00,  
-     /7.70,9.70,11.7,15.0,17.0,18.7,19.2,19.2,18.4,16.1,                
-     /12.6,8.70,5.15,3.60,2.70,2.15,1.50,1.10,0.62,0.42,
-     /.235,0.16,.115,0.09,0.06,.045,.0223,.0134,.00654,.0039,
-     /.00261,.00188,.00142,.00112,9.01D-4,7.44D-4,4.96D-4,3.56D-4,
-     /2.69D-4,2.11D-4,
-     /1.41D-4,1.01D-4,7.67D-5,6.03D-5,4.88D-5,4.04D-5,2.92D-5,2.22D-5,
-     /1.76D-5,1.43D-5,
-     /1.19D-5,8.09D-6,5.93D-6,4.57D-6,3.66D-6,2.54D-6,1.89D-6,1.48D-6,
-     /1.20D-6,9.96D-7,
-     /8.45D-7,6.38D-7,5.04D-7,4.11D-7,3.43D-7,2.92D-7,2.09D-7,1.58D-7,
-     /1.24D-7,1.00D-7,
-     /7.01D-8,5.21D-8,3.24D-8,1.24D-8,6.64D-9/
+      DATA YELM/26.7,25.4,22.6,21.0,18.8,16.5,14.8,13.9,13.0,12.0,
+     /11.2,10.05,9.05,8.20,7.50,6.25,5.30,4.60,3.88,3.22,
+     /2.60,1.74,1.19,0.70,.440,.290,.270,.270,.325,.410,
+     /.540,.645,.850,1.08,1.30,1.75,2.25,2.70,3.50,4.35,
+     /6.00,7.70,9.70,11.7,14.9,17.0,18.4,18.6,18.6,17.7,
+     /14.6,10.6,6.90,4.80,3.90,2.75,2.15,1.75,1.24,0.96,
+     /0.59,.400,.235,0.16,.115,0.09,0.06,.045,.0223,.0134,
+     /.00654,.0039,.00261,.00188,.00142,.00112,9.01D-4,7.44D-4,
+     /4.96D-4,3.56D-4,
+     /2.69D-4,2.11D-4,1.41D-4,1.01D-4,7.67D-5,6.03D-5,4.88D-5,4.04D-5,
+     /2.92D-5,2.22D-5,
+     /1.76D-5,1.43D-5,1.19D-5,8.09D-6,5.93D-6,4.57D-6,3.66D-6,2.54D-6,
+     /1.89D-6,1.48D-6,
+     /1.20D-6,9.96D-7,8.45D-7,6.38D-7,5.04D-7,4.11D-7,3.43D-7,2.92D-7,
+     /2.09D-7,1.58D-7,
+     /1.24D-7,1.00D-7,7.01D-8,5.21D-8,3.24D-8,1.24D-8,6.64D-9/
 C ELASTIC TOTAL X-SECTION               
-      DATA YELT/26.7,25.6,23.3,19.9,17.9,16.4,15.5,14.8,13.8,12.9,     
-     /11.6,10.6,9.67,8.89,7.60,6.57,5.70,4.90,4.20,3.70,
-     /2.80,2.20,1.62,1.23,0.95,0.82,0.75,0.72,0.71,0.73,
-     /0.77,0.95,1.10,1.28,1.72,2.25,3.00,4.00,5.10,6.90,
-     /8.81,11.0,13.3,17.6,21.2,23.5,24.3,24.4,23.8,22.2,
-     /19.6,15.6,10.7,8.10,6.60,5.60,4.15,3.40,2.20,1.80,
-     /1.20,0.90,0.75,0.62,0.48,0.40,0.29,.235,0.17,.135,
-     /0.11,.095,.085,.078,.070,.064,.054,.046,.040,.037,                
-     /.0315,.0266,.0231,.0205,.0185,.0169,.0144,.0127,.0117,.0104,
-     /.00957,.00812,.00715,.00647,.00595,.00524,.00477,.00444,.00420,
-     /.00401,
-     /.00387,.00365,.00350,.00340,.00331,.00325,.00314,.00308,.00303,
-     /.00300,
-     /.00296,.00294,.00292,.00289,.00289/
+      DATA YELT/26.7,25.6,23.3,22.0,19.9,17.9,16.4,15.5,14.8,13.8,
+     /12.9,11.6,10.6,9.67,8.89,7.60,6.57,5.70,4.90,4.20,
+     /3.70,2.80,2.20,1.62,1.23,0.95,0.82,0.75,0.72,0.71,
+     /0.73,0.77,0.95,1.10,1.28,1.72,2.25,3.00,3.96,5.05,
+     /6.93,8.93,11.2,13.4,17.9,21.5,23.3,24.0,24.1,24.0,
+     /22.2,19.9,16.0,13.4,11.6,8.94,7.57,6.46,5.11,4.24,
+     /2.79,2.21,1.56,1.06,0.80,0.63,0.50,0.40,0.31,.252,
+     /.202,.167,.147,.123,.106,.093,.083,.075,.060,.051,
+     /.044,.039,.0315,.0266,.0231,.0205,.0185,.0169,.0144,.0127,
+     /.0117,.0104,.00957,.00812,.00715,.00647,.00595,.00524,.00477,
+     /.00444,
+     /.00420,.00401,.00387,.00365,.00350,.00340,.00331,.00325,.00314,
+     /.00308,
+     /.00303,.00300,.00296,.00294,.00292,.00289,.00289/
 C EPSILON FOR ELASTIC ANGULAR DISTRIBUTION
-      DATA YEPS/0.00,.0117,.0450,.0828,.1170,.1457,.1541,.1812,.1942,
-     /.2188,
-     /.2365,.2785,.2926,.2966,.2909,.2917,.2847,.3149,.3548,.4467,
-     /.5331,.6282,.7417,.8087,.8425,.8018,.7143,.6116,.4821,.3600,
-     /.2312,.1571,.0273,-.0234,-.0262,0.000,.1493,.1862,.2185,.1942,
-     /.1876,.1762,.1793,.2194,.2920,.3007,.3087,.3133,.3326,.3986,
-     /.5064,.6091,.6926,.7297,.7634,.7861,.8056,.8365,.8678,.9006,
-     /.9232,.9333,.9460,.9501,.9595,.9650,.9791,.9859,.9915,.9941,
-     /.99535,.99628,.99697,.99748,.99779,.99804,.99852,.99880,.99898,
-     /.999159,
-     /.999366,.999477,.999552,.999610,.999656,.999693,.999746,.999785,
-     /.999819,.999837,
-     /.9998542,.9998865,.9999077,.9999229,.9999340,.9999494,.9999596,
-     /.9999667,.9999719,.9999759,
-     /.9999791,.9999837,.9999868,.9999891,.9999908,.9999921,.9999943,
-     /.9999957,.9999967,.9999973,
-     /.9999982,.9999986,.9999992,.9999997,.9999998/
-     /
+      DATA YEPS/0.00,.0117,.0450,.0681,.0828,.1170,.1457,.1541,.1812,
+     /.1942,
+     /.1961,.1988,.2173,.2257,.2320,.2627,.2851,.2847,.3063,.3416,
+     /.4288,.5331,.6282,.7417,.8087,.8505,.8320,.8068,.7229,.5861,
+     /.3788,.2406,.1571,.0273,-.0234,-.0262,0.000,.1493,.1732,.2061,
+     /.1997,.2049,.1993,.1889,.2482,.3079,.3093,.3300,.3345,.3819,
+     /.4876,.6374,.7425,.8083,.8264,.8488,.8662,.8755,.8946,.9049,
+     /.9141,.9315,.9474,.9472,.9507,.9512,.9617,.9650,.9808,.9871,
+     /.9931,.9954,.99674,.99728,.99768,.99796,.99820,.99838,.99870,
+     /.99893,
+     /.99909,.999209,.999366,.999477,.999552,.999610,.999656,.999693,
+     /.999746,.999785,
+     /.999819,.999837,.9998542,.9998865,.9999077,.9999229,.9999340,
+     /.9999494,.9999596,.9999667,
+     /.9999719,.9999759,.9999791,.9999837,.9999868,.9999891,.9999908,
+     /.9999921,.9999943,.9999957,
+     /.9999967,.9999973,.9999982,.9999986,.9999992,.9999997,.9999998/
 C V4 DIPOLE PART AS ANALYTIC FUNCTION 
       DATA XVBV4/.1625135,0.20,0.30,0.40,0.50,0.60,0.80,1.00,1.50,2.00,
      /3.00,5.00,6.00,7.00,8.00,9.00,10.0,12.5,15.0,20.0,
-     /50.0,100.,1000.,10000.,1.0D5,1.0D6,1.0D7/
+     /30.0,40.0,50.0,60.0,80.0,100.,150.,200.,300.,500.,
+     /700.,1000.,10000.,1.0D5,1.0D6,1.0D7/
       DATA YVBV4/0.00,.0001,.060,.057,.055,.050,.040,.035,.041,.056,
      /.082,.278,.406,0.47,0.44,.383,.323,.266,.201,.126,
-     /.051,.027,.0002,1.D-5,1.D-6,1.D-7,1.D-8/ 
+     /.056,.031,.020,.014,.0079,.005,.0022,.00126,.00056,.00020,
+     /.00010,.00005,5.D-7,5.D-9,5.D-11,5.D-13/ 
 C V2       
       DATA XVBV2/.1901087,.195,0.20,0.21,0.22,0.23,0.24,0.26,0.28,0.30,
      /0.40,0.50,0.60,0.80,1.00,1.50,2.00,3.00,5.00,6.00,
-     /7.00,8.00,9.00,10.0,12.5,15.0,20.0,50.0,100.,1000.,
-     /10000.,1.0D5,1.0D6,1.0D7/
+     /7.00,8.00,9.00,10.0,12.5,15.0,20.0,30.0,40.0/
       DATA YVBV2/0.00,.028,.038,.051,.060,.066,.071,.075,.076,.077,  
      /.080,.081,.082,.082,.083,.084,.086,.118,.308,.446,
-     /0.49,0.46,.403,.333,.217,.171,.102,.040,.022,.0002,
-     /1.D-5,1.D-6,1.D-7,1.D-8/ 
+     /0.49,0.46,.403,.333,.217,.171,.102,.045,.025/
 C V1  
       DATA XVBV1/.3615974,.363,.365,.367,0.37,.375,0.38,0.39,0.40,0.42,
      /0.45,0.50,0.60,0.70,0.80,1.00,1.50,2.00,3.00,5.00,
-     /6.00,7.00,8.00,9.00,10.0,12.5,15.0,20.0,50.0,100.,
-     /1000.,10000.,1.0D5,1.0D6,1.0D7/
+     /6.00,7.00,8.00,9.00,10.0,12.5,15.0,20.0,30.0,40.0/
       DATA YVBV1/.0,.0028,.0043,.0054,.0066,.0083,.0095,.0115,.013,.015,
      /.017,.019,0.02,0.02,.021,.022,.023,.025,.042,.157,
-     /.226,.260,.260,.215,.190,.151,.120,.085,.029,.012,
-     /.0001,1.D-5,1.D-6,1.D-7,1.D-8/
+     /.226,.260,.260,.215,.190,.151,.120,.085,.038,.021/
 C V3 DIPOLE PART AS ANALYTIC FUNCTION
       DATA XVBV3/.3743690,0.40,0.50,0.60,0.70,0.80,1.00,1.50,2.00,3.00,
-     /5.00,6.00,7.00,8.00,9.00,10.0,12.5,15.0,20.0,50.0,
-     /100.,1000.,10000.,1.0D5,1.0D6,1.0D7/
+     /5.00,6.00,7.00,8.00,9.00,10.0,12.5,15.0,20.0,30.0,
+     /40.0,50.0,60.0,80.0,100.,150.,200.,300.,500.,700.,
+     /1000.,10000.,1.0D5,1.0D6,1.0D7/
       DATA YVBV3/.0,.004,0.01,.011,.011,.011,.011,.015,.019,.105,
-     /.508,.696,.780,.730,.633,.453,.217,.132,.053,.024,
-     /.009,.0001,1.D-5,1.D-6,1.D-7,1.D-8/
+     /.458,.596,.680,.680,.593,.433,.300,.241,.142,.063,
+     /.0355,.0227,.0158,.0089,.0057,.0025,.00142,.00063,.000227,.000116,
+     /.000057,5.7D-7,5.7D-9,5.7D-11,5.7D-13/
 C VIBRATION HARMONIC 
       DATA XVBH1/.544,1.00,2.00,3.00,5.00,6.00,7.00,8.00,9.00,10.0,
-     /12.5,15.0,17.5,20.0,50.0,100.,1000.,10000.,1.0D5,1.0D6,
-     /1.0D7/
+     /12.5,15.0,17.5,20.0/
       DATA YVBH1/0.00,.0007,.0028,.014,.053,.068,.075,.075,.061,.044,
-     /.031,.021,.015,.011,.005,.0017,.0001,.00001,1.D-6,1.D-7,
-     /1.D-8/
+     /.031,.021,.015,.011/
 C VIBRATION HARMONIC
       DATA XVBH2/.736,1.00,2.00,3.00,5.00,6.00,7.00,8.00,9.00,10.0,
-     /12.5,15.0,17.5,20.0,50.0,100.,1000.,10000.,1.0D5,1.0D6,
-     /1.0D7/
+     /12.5,15.0,17.5,20.0/
       DATA YVBH2/0.00,.0005,.0022,.0135,.044,.058,.064,.064,.053,.039,
-     /.024,.014,.010,.006,.004,.0017,.0001,.00001,1.D-6,1.D-7,
-     /1.D-8/
+     /.024,.014,.010,.006/
 C IONISATION  X-SECTION ABOVE 1KEV GIVEN BY BORN-BETHE         
       DATA XION/12.65,13.5,14.0,14.5,15.0,15.5,16.0,16.5,17.0,17.5,     
      /18.0,18.5,19.0,19.5,21.0,21.5,22.0,22.5,23.0,23.5,
@@ -18318,43 +25902,49 @@ C COUNTING IONISATION
      /3.67,3.64,3.62,3.59,3.56,3.53,3.49,3.46,3.43,3.39,
      /3.33,3.24,3.09,2.97,2.66,2.38,2.20,2.02,1.86,1.72,
      /1.62,1.52,1.43,1.35,1.29,1.24,1.18,1.14,1.09,1.042/
+C K-SHELL IONISATION X-SECTION
+      DATA XKSH/291.,298.,307.,316.,325.,335.,345.,365.,398.,422.,
+     /447.,473.,501.,531.,613.,668.,708.,750.,817.,917.,
+     /1000.,1122.,1296.,1496.,1679.,1884.,2054.,2238.,2512.,2985.,
+     /3981.,5012.,7079.,1.0D4,1.50D4,2.05D4,2.51D4,3.07D4,4.10D4,5.01D4,
+     /6.13D4,7.08D4,8.18D4,1.0D5,1.54D5,2.05D5,2.99D5,4.10D5,5.01D5,
+     /6.13D5,
+     /7.08D5,8.18D5,1.0D6,1.25D6,1.5D6,2.05D6,3.07D6,4.10D6,5.01D6,
+     /6.13D6,
+     /7.08D6,8.18D6,1.0D7/
+      DATA YKSH/0.00,1.66D-4,3.48D-4,5.25D-4,6.96D-4,8.63D-4,1.02D-3,
+     /1.33D-3,1.75D-3,2.01D-3,
+     /2.24D-3,2.46D-3,2.66D-3,2.84D-3,3.21D-3,3.38D-3,3.47D-3,3.55D-3,
+     /3.65D-3,3.72D-3,
+     /3.75D-3,3.74D-3,3.68D-3,3.57D-3,3.45D-3,3.31D-3,3.19D-3,3.07D-3,
+     /2.91D-3,2.66D-3,
+     /2.25D-3,1.95D-3,1.55D-3,1.21D-3,8.97D-4,7.07D-4,6.07D-4,5.21D-4,
+     /4.21D-4,3.63D-4,
+     /3.14D-4,2.84D-4,2.57D-4,2.25D-4,1.74D-4,1.50D-4,1.28D-4,1.15D-4,
+     /1.09D-4,1.05D-4,
+     /1.03D-4,1.02D-4,1.01D-4,1.005D-4,1.01D-4,1.03D-4,1.07D-4,1.11D-4,
+     /1.14D-4,1.17D-4,
+     /1.20D-4,1.22D-4,1.25D-4/
 C ATTACHMENT  - DEATTACHMENT VIA H- 9.8 EV RESONANCE (RAWAT ET AL)
       DATA XDET/7.80,8.00,9.00,9.80,10.0,11.0,12.0,13.0,14.0/
       DATA YDET/0.00,.0049,.0134,.0153,.0150,.0113,.0038,.0095,0.00/
 C ATTACHMENT  VIA CH2- ONLY (RAWAT ET AL)
       DATA XATT/9.00,10.0,10.4,11.0,12.0,13.0/                          
       DATA YATT/0.00,0.00092,.00112,.00089,.00027,0.00/                 
-C DISSOCIATION ( HAYASHI ADJUSTED TO GIVE WINTERS TOTAL DISSOCIATION) 
-      DATA XDIS1/8.55,9.00,10.0,11.0,12.0,13.0,13.5,14.0,15.0,16.0,     
-     /17.0,18.0,19.0,20.0,22.0,25.0,30.0,35.0,40.0/                     
-      DATA YDIS1/0.00,0.15,.225,.288,.300,.285,.263,.238,.180,.130,     
-     /.091,.063,.042,.0308,.017,.0063,.00175,.00068,0.00/               
-      DATA XDIS2/9.00,10.0,11.0,12.0,13.0,14.0,16.0,18.0,20.0,22.0,     
-     /25.0,30.0,35.0,40.0,50.0,60.0,80.0,100.,150.,200.,                
-     /300.,400.,500.,700.,1000.,1500.,2000.,3000.,4000.,6000.,
-     /8000.,10000./
-      DATA YDIS2/0.00,.042,.084,.126,.168,.196,.259,.308,.339,.364,     
-     /.378,.382,.384,.386,.397,.419,.427,.419,.355,.324,                
-     /.282,.233,.195,.140,.0988,.0691,.0529,.0388,.0282,.0205,
-     /.0155,.0127/
-      DATA XDIS3/10.5,11.0,12.0,13.0,14.0,16.0,18.0,20.0,22.0,25.0,     
-     /30.0,35.0,40.0,50.0,60.0,80.0,100.,150.,200.,300.,                
-     /400.,500.,700.,1000.,1500.,2000.,3000.,4000.,6000.,8000.,
-     /10000./
-      DATA YDIS3/0.00,.035,.140,.231,.315,.476,.574,.619,.644,.658,     
-     /.633,.602,.608,.625,.643,.625,.608,.530,.483,.406,                
-     /.342,.284,.204,.141,.0987,.0756,.0554,.0403,.0292,.0222,
-     /.0181/
-      DATA XDIS4/12.0,13.0,14.0,16.0,18.0,20.0,22.0,25.0,30.0,35.0,     
-     /40.0,50.0,60.0,80.0,100.,150.,200.,300.,400.,500.,                
-     /700.,1000.,1500.,2000.,3000.,4000.,6000.,8000.,10000./
-      DATA YDIS4/0.00,.140,.280,.525,.700,.800,.854,.889,.941,.964,     
-     /.993,1.07,1.13,1.22,1.26,1.15,1.07,.912,.746,.641,                
-     /.455,.320,.224,.172,.126,.0915,.0663,.0503,.0412/
-      DATA XDIS5/13.3,14.0,16.0,18.0,20.0,22.0,25.0,30.0,35.0,40.0,
-     /50.0,60.0,80.0,100.,150.,200./                                 
-      DATA YDIS5/0.00,.0315,.252,.462,.620,.714,.790,.842,.828,.772,
-     /.639,.503,.275,.090,.064,0.00/
+C DISSOCIATION TRIPLET + SINGLETS ( SINGLETS GIVEN ANALYTICALLY)
+C TRIPLETS  
+      DATA XTR1/7.50,8.50,10.0,11.0,12.0,13.0,15.0,17.0,20.0,23.0,
+     /27.0,30.0/
+      DATA YTR1/0.00,.015,.050,.075,.084,.090,.098,.100,.090,.075,
+     /.055,.043/
+      DATA XTR2/8.50,10.0,11.0,12.0,13.0,15.0,17.0,20.0,23.0,27.0,
+     /30.0/
+      DATA YTR2/0.00,.088,.161,.185,.198,.216,.220,.198,.165,.121,
+     /.095/
+      DATA XTR3/10.0,11.0,12.0,13.0,15.0,17.0,20.0,23.0,27.0,30.0,
+     /35.0/
+      DATA YTR3/0.00,.245,.504,.588,.665,.700,.700,.665,.525,.406,
+     /.301/
 C LIGHT EMISSION FROM CH(A2DELTA TO X2PI) 
       DATA XCHD/13.4,13.5,14.5,18.5,20.6,21.6,22.5,23.6,27.7,31.8,
      /33.5,33.9,35.4,37.5,39.2,40.0,44.0,49.1,55.6,58.3,
@@ -18409,10 +25999,24 @@ C LIGHT EMISSION FROM H(BETA)
      /7.19D-4,5.45D-4,3.84D-4,3.00D-4,2.47D-4,2.10D-4,1.84D-4,1.63D-4,
      /7.5D-5,1.05D-5,1.5D-6,2.2D-7/
 C-----------------------------------------------------------------------
+C 2012: UPDATE INCLUDES USE OF OSCILLATOR STRENGTHS FOR DIPOLE SINGLET
+C       DISSOCIATION X-SECTION. USED OSCILLATOR STRENGTH FROM 
+C       AN AVERAGE OF BRION AND KATEMA WITH HIGH ENERGY VALUES FROM 
+C       BERKOWITZ. 1-2% SCALING FACTOR AT END OF BEF FORMULA IS FROM
+C       INCREASED ENERGY LOSS FROM THRESHOLD ENERGY TO AVERAGE ENERGY 
+C       FOR THE DIPOLE STATES. 
+C       3 TRIPLET STATE DISSOCIATION X-SECTIONS ALLOWED TO VARY IN ORDER
+C       TO GIVE FIT TO TOWNSEND COEFICIENT. 
+C       INTRODUCED DISSOCIATIVE IONISATION X-SECTION OF APPROXIMATELY
+C       50% OF TOTAL IONISATION X-SECTION .  AGREES WITH EXPERIMENTAL 
+C       FRAGMENT YIELD FROM LINDSAY AND IMPROVES AGREEMENT WITH WINTERS 
+C       TOTAL DISSOCIATION X-SECTION.
+C       K-SHELL IONISATION INTRODUCED FOR DE/DX AND FANO CALCULATIONS. 
+C ---------------------------------------------------------------------
 C 2007: UPDATE OF 2004 DATABASE 
 C NOW SPLIT V24 AND V13 VIBRATIONS INTO V1 V2 V3 AND V4 X-SECTIONS
 C  SHAPE OF VIBRATIONS GIVEN BY SHAPE FUNCTIONS FROM THEORETICAL 
-C  PREDICTIONS BY GIANTURCO ET AL.
+C  PREDICTIONS BY GIANTURCO ET AL. AND EXPERIMENT BY ALLAN.
 C  VIBRATION ANGULAR DISTRIBUTIONS MODELLED BY MODIFIED CAPITELLI/LONGO
 C  ELASTIC ANGULAR DISTRIBUTIONS CAN BE EITHER ISOTROPIC OR MODELLED
 C  BY OKHRIMOVSKYY ET AL ALGORITHM
@@ -18428,31 +26032,39 @@ C DE-ATTACHMENT FOR PART OF ATTACHMENT TO H- ION ASSUMED DUE TO
 C HIGH COLLISIONAL ENERGY FORMATION.
 C --------------------------------------------------------------------- 
 C  FIT TO METHANE DRIFT VELOCITY OF HADDAD AND SCHMIDT AT LOW FIELD 
-C  AND HUNTER AND KLINE AT HIGH FIELD.
-C  CALCULATED DRIFT VELOCITY IS WITHIN 1% AT ALL FIELDS UP TO 600 TD 
-C  TRANSVERSE DIFFUSION WITHIN 3% AT ALL FIELDS
-C   LONGITUDINAL DIFFUSION WITHIN 3% AT ALL FIELDS  
+C  AND HUNTER AND KLINE AND YOSHIDA AT HIGH FIELD.
+C  CALCULATED DRIFT VELOCITY IS WITHIN 1% AT ALL FIELDS UP TO 1000 TD 
+C  TRANSVERSE AND LONGITUDINAL DIFFUSION WITHIN 3% AT ALL FIELDS
+C  TOWNSEND COEFICIENT WITHIN 3% AT ALL FIELDS  
 C REPRODUCES DRIFT VELOCITY AND LORENTZ ANGLES IN ARGON METHANE MIXTURES
 C LORENTZ ANGLE ACCURACY LESS THAN 1 DEGREE IN ARGON MIXTURES
 C DRIFT VELOCITY BETTER THAN 0.75% IN ARGON MIXTURES.
 C ALL ENERGY DEPENDENT FANO FACTORS WITHIN EXPERIMENTAL ERRORS OF 5%  
 C-----------------------------------------------------------------------
+C     NANISO=0
       IF(NANISO.EQ.0) THEN
-       NAME=' CH4 2008 ISOT '
+       NAME=' CH4 2012 ISOTROPIC '
       ELSE
-       NAME=' CH4 2008 ANISO'
+       NAME=' CH4 2012 ANISOTROPIC '
       ENDIF
 C-----------------------------------------------------------------------
-C BORN BETHE VALUES FOR IONISATION
+C BORN BETHE CONSTANTS
+      A0=0.52917720859D-08
+      RY=13.60569193
       CONST=1.873884D-20
       EMASS2=1021997.804
+      API=DACOS(-1.0D0)
+      BBCONST=16.0D0*API*A0*A0*RY*RY/EMASS2
+C
+C BORN BETHE VALUES FOR IONISATION
       AM2=3.75
       C=42.5 
 C BORN BETHE FOR EXCITATION
       AM2EXC=1.40
       CEXC=19.0 
-C
-      NIN=18
+C 
+      NION=3
+      NIN=33
       DO 1 J=1,6
     1 KEL(J)=NANISO
 C SUPERELASTIC AND HARMONIC VIBRATIONS ASSUMED ISOTROPIC
@@ -18475,23 +26087,22 @@ C
 C  RAT IS MOMENTUM TRANSFER TO TOTAL RATIO FOR VIBRATIONS IN THE
 C  RESONANCE REGION AND ALSO FOR THE VIBRATIONS V1 AND V2 .     
 C  USED DIPOLE ANGULAR DISTRIBUTION FOR V3 AND V4 NEAR THRESHOLD.
-      RAT=0.8  
+      RAT=1.0  
 C                                                         
-      NDATA=115
-      NVIBV4=27
-      NVIBV2=34
-      NVIBV1=35
-      NVIBV3=26
-      NVIBH1=21
-      NVIBH2=21                                                        
-      NION=70                                                           
+      NDATA=117
+      NVIBV4=36
+      NVIBV2=29
+      NVIBV1=30
+      NVIBV3=35
+      NVIBH1=14
+      NVIBH2=14                                                        
+      NIOND=70
+      NKSH=63                                                          
       NATT=6    
-      NDET=9                                                       
-      NDIS1=19                                                          
-      NDIS2=32
-      NDIS3=31
-      NDIS4=29
-      NDIS5=16
+      NDET=9   
+      NTRP1=12
+      NTRP2=11
+      NTRP3=11                                                    
       NCHD=42
       NCHB=43
       NHAL=42
@@ -18504,15 +26115,17 @@ C VIBRATIONAL DEGENERACY
 C
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(16.0426*AMU)                                      
-      E(3)=12.65
+      E(3)=12.62
 C EXCITATION X-SECTION AT 1.2 MEV                                 
-      E(4)=0.0043D-16            
+      E(4)=0.00404D-16            
 C IONISING X-SECTION AT 1.2 MEV                                       
       E(5)=0.00982D-16         
 C EOBY AT 1.5 MEV                                         
       E(6)=8.0 
-C OPAL AND BEATY IONISATION ENERGY SPLITTING (LOW ENERGY)
-      EOBY=7.3
+C 
+      EION(1)=12.65
+      EION(2)=21.0
+      EION(3)=291.0
 C OFFSET ENERGY FOR IONISATION ELECTRON ANGULAR DISTRIBUTION
       IOFF=IFIX(SNGL(0.5+E(3)/ESTEP)) 
       EIN(1)=-0.1625135 
@@ -18522,90 +26135,95 @@ C OFFSET ENERGY FOR IONISATION ELECTRON ANGULAR DISTRIBUTION
       EIN(5)=0.3615974 
       EIN(6)=0.3743690
       EIN(7)=0.544
-      EIN(8)=0.736  
-      EIN(9)=7.80                                               
-      EIN(10)=8.55                                                      
-      EIN(11)=9.00
-      EIN(12)=10.5
-      EIN(13)=12.0
-      EIN(14)=13.3
-      EIN(15)=13.4 
-      EIN(16)=13.7  
-      EIN(17)=16.14
-      EIN(18)=16.8
+      EIN(8)=0.736
+      EIN(9)=7.50  
+      EIN(10)=7.80                                               
+      EIN(11)=8.50                                                      
+      EIN(12)=8.75
+      EIN(13)=9.25
+      EIN(14)=9.75
+      EIN(15)=10.0
+      EIN(16)=10.25
+      EIN(17)=10.75
+      EIN(18)=11.25
+      EIN(19)=11.75
+      EIN(20)=12.25
+      EIN(21)=12.75
+      EIN(22)=13.25
+      EIN(23)=13.4 
+      EIN(24)=13.7  
+      EIN(25)=13.75
+      EIN(26)=14.25
+      EIN(27)=14.75
+      EIN(28)=15.25
+      EIN(29)=15.75
+      EIN(30)=16.14
+      EIN(31)=16.8
+      EIN(32)=20.5
+      EIN(33)=22.0
 C OFFSET ENERGY FOR EXCITATION LEVELS ANGULAR DISTRIBUTION
-      IOFF10=IFIX(SNGL(0.5+EIN(10)/ESTEP))
-      IOFF11=IFIX(SNGL(0.5+EIN(11)/ESTEP))
-      IOFF12=IFIX(SNGL(0.5+EIN(12)/ESTEP))
-      IOFF13=IFIX(SNGL(0.5+EIN(13)/ESTEP))
-      IOFF14=IFIX(SNGL(0.5+EIN(14)/ESTEP))
-      IOFF15=IFIX(SNGL(0.5+EIN(15)/ESTEP))
-      IOFF16=IFIX(SNGL(0.5+EIN(16)/ESTEP))
-      IOFF17=IFIX(SNGL(0.5+EIN(17)/ESTEP))
-      IOFF18=IFIX(SNGL(0.5+EIN(18)/ESTEP))
+      DO 3 NANG=9,33
+    3 IOFFN(NANG)=IFIX(SNGL(0.5+EIN(NANG)/ESTEP))
 C***********************************************************************
 C ENTER PENNING TRANSFER FRACTION FOR EACH LEVEL 
-C FIRST 9 LEVELS DO NOT HAVE ENOUGH ENERGY TO GIVE PENNING
-C HIGHEST LEVELS 15,16,17 AND 18 REPRESENT LIGHT EMISSION FRAGMENTS
-C AND SO DO NOT COUNT IN THE PENNING FRACTIONS
-      DO 7 K=1,18
-      DO 7 L=1,3
-    7 PENFRA(L,K)=0.0
-C PENNING TRANSFER FRACTION FOR LEVELS 10,11,12 13 AND 14
-      PENFRA(1,10)=0.0
-      PENFRA(1,11)=0.0
-      PENFRA(1,12)=0.0
-      PENFRA(1,13)=0.0
-      PENFRA(1,14)=0.0
-C PENNING TRANSFER DISTANCE IN MICRONS
-      PENFRA(2,10)=1.0
-      PENFRA(2,11)=1.0
-      PENFRA(2,12)=1.0
-      PENFRA(2,13)=1.0
-      PENFRA(2,14)=1.0
-C PENNING TRANSFER TIME IN PICOSECONDS
-      PENFRA(3,10)=1.0
-      PENFRA(3,11)=1.0
-      PENFRA(3,12)=1.0
-      PENFRA(3,13)=1.0
-      PENFRA(3,14)=1.0
-      IF(IPEN.EQ.0) GO TO 9
-      DO 8 KDUM=10,14
-      IF(PENFRA(1,KDUM).EQ.0.0) GO TO 8
+C LEVELS ARE DISSOCIATIVE SO DO NOT  GIVE PENNING TRANSFERS
+      DO 4 K=1,33
+      DO 4 L=1,3
+    4 PENFRA(L,K)=0.0
+      IF(IPEN.EQ.0) GO TO 6
+      DO 5 KDUM=10,14
+      IF(PENFRA(1,KDUM).EQ.0.0) GO TO 5
       WRITE(6,999) NAME,EIN(KDUM),PENFRA(1,KDUM),PENFRA(2,KDUM),
      /PENFRA(3,KDUM)
   999 FORMAT(' GAS = ',A15,' ENERGY LEVEL = ',F7.4,' EV.',/,' PENNING PR
      /OBABILITY =',F5.3,' ABS.LENGTH =',F7.2,' DECAY TIME =',F7.1,/)
-    8 CONTINUE
+    5 CONTINUE
 C***********************************************************************
 C
-    9 SCRPT(1)='                              '
+    6 SCRPT(1)='                              '
       SCRPT(2)=' ELASTIC  ANISOTROPIC METHANE '
       IF(NANISO.EQ.0) THEN
       SCRPT(2)=' ELASTIC  ISOTROPIC METHANE   '
       ENDIF
-      SCRPT(3)=' IONISATION    ELOSS= 12.65   '
-      SCRPT(4)=' ATTACHMENT (CH2- ONLY)       '
-      SCRPT(5)='                              '
-      SCRPT(6)='                              '
-      SCRPT(7)=' VIB V4        ELOSS=-0.162513'
-      SCRPT(8)=' VIB V4        ELOSS= 0.162513'
-      SCRPT(9)=' VIB V2        ELOSS=-0.190109'
-      SCRPT(10)=' VIB V2        ELOSS= 0.190109'
-      SCRPT(11)=' VIB V1        ELOSS= 0.361597'
-      SCRPT(12)=' VIB V3        ELOSS= 0.374369'
-      SCRPT(13)=' VIB  HAR      ELOSS=  0.544  '
-      SCRPT(14)=' VIB  HAR      ELOSS=  0.736  '
-      SCRPT(15)=' ATT - DEATT    ELOSS=  7.8   '
-      SCRPT(16)=' EXC DISSOCIATN ELOSS=  8.55  '  
-      SCRPT(17)=' EXC DISSOCIATN ELOSS=  9.0   '
-      SCRPT(18)=' EXC DISSOCIATN ELOSS= 10.5   '
-      SCRPT(19)=' EXC DISSOCIATN ELOSS= 12.0   '
-      SCRPT(20)=' EXC DISSOCIATN ELOSS= 13.3   '
-      SCRPT(21)=' A2D TO G.S.   ELOSS= 13.4    '
-      SCRPT(22)=' B2PI TO G.S.  ELOSS= 13.7    '
-      SCRPT(23)=' H(ALPHA)      ELOSS= 16.14   '
-      SCRPT(24)=' H(BETA)       ELOSS= 16.8    '
+      SCRPT(3)=' IONISATION                        ELOSS= 12.65   '
+      SCRPT(4)=' IONISATION-EXCITATION             ELOSS= 21.0    '
+      SCRPT(5)=' IONISATION CARBON K-SHELL         ELOSS=291.0    '
+      SCRPT(6)=' ATTACHMENT (CH2- ION  ONLY)                      '
+      SCRPT(7)='                                                  '
+      SCRPT(8)='                                                  '
+      SCRPT(9)=' VIBRATION V4 SUPERELASTIC         ELOSS=-0.162513'
+      SCRPT(10)=' VIBRATION V4                      ELOSS= 0.162513'
+      SCRPT(11)=' VIBRATION V2 SUPERELASTIC         ELOSS=-0.190109'
+      SCRPT(12)=' VIBRATION V2                      ELOSS= 0.190109'
+      SCRPT(13)=' VIBRATION V1                      ELOSS= 0.361597'
+      SCRPT(14)=' VIBRATION V3                      ELOSS= 0.374369'
+      SCRPT(15)=' VIBRATION  HARMONICS NV1+NV3      ELOSS=  0.544  '
+      SCRPT(16)=' VIBRATION  HARMONICS NV2+NV3      ELOSS=  0.736  '
+      SCRPT(17)=' EXCITATION TRIPLET  DISSOCIATION  ELOSS=  7.5    '
+      SCRPT(18)=' ATTACHMENT - DEATTACHMENT         ELOSS=  7.8    '
+      SCRPT(19)=' EXCITATION TRIPLET  DISSOCIATION  ELOSS=  8.5    '  
+      SCRPT(20)=' EXCITATION SINGLET  DISSOCIATION  ELOSS=  8.75   '
+      SCRPT(21)=' EXCITATION SINGLET  DISSOCIATION  ELOSS=  9.25   '
+      SCRPT(22)=' EXCITATION SINGLET  DISSOCIATION  ELOSS=  9.75   '
+      SCRPT(23)=' EXCITATION TRIPLET  DISSOCIATION  ELOSS= 10.0    '
+      SCRPT(24)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 10.25   '
+      SCRPT(25)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 10.75   '
+      SCRPT(26)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 11.25   '
+      SCRPT(27)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 11.75   '
+      SCRPT(28)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 12.25   '
+      SCRPT(29)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 12.75   '
+      SCRPT(30)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 13.25   '
+      SCRPT(31)=' EXCITATION A2D TO GROUND STATE.   ELOSS= 13.4    '
+      SCRPT(32)=' EXCITATION B2PI TO GROUND STATE   ELOSS= 13.7    '
+      SCRPT(33)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 13.75   '
+      SCRPT(34)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 14.25   '
+      SCRPT(35)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 14.75   '
+      SCRPT(36)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 15.25   '
+      SCRPT(37)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 15.75   '
+      SCRPT(38)=' EXCITATION  H(ALPHA)              ELOSS= 16.14   '
+      SCRPT(39)=' EXCITATION  H(BETA)               ELOSS= 16.8    '
+      SCRPT(40)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 20.25   '
+      SCRPT(41)=' EXCITATION SINGLET  DISSOCIATION  ELOSS= 22.0    '
 C CALC LEVEL POPULATIONS
       APOPV4=DEGV4*DEXP(EIN(1)/AKT)
       APOPV2=DEGV2*DEXP(EIN(3)/AKT)
@@ -18618,9 +26236,13 @@ C  RENORMALISE GROUND STATE TO ALLOW FOR INCREASED EXCITATION X-SEC
 C  FROM EXCITED VIBRATIONAL STATE ( EXACT FOR TWICE GROUND STATE XSEC) 
       APOPGS=1.0
 C
-      EN=-ESTEP/2.0                                      
+      EN=-ESTEP/2.0  
       DO 1000 I=1,NSTEP                                              
       EN=EN+ESTEP   
+      GAMMA1=(EMASS2+2.0D0*EN)/EMASS2
+      GAMMA2=GAMMA1*GAMMA1
+      BETA=DSQRT(1.0D0-1.0D0/GAMMA2)
+      BETA2=BETA*BETA
 C USE LOG INTERPOLATION FOR ELASTIC      
       IF(EN.LE.XEN(2)) THEN 
        QELA=26.7D-16
@@ -18628,11 +26250,11 @@ C USE LOG INTERPOLATION FOR ELASTIC
        PQ2=0.0
        GO TO 30 
       ENDIF                                                    
-      DO 3 J=2,NDATA 
-      IF(EN.LE.XEN(J)) GO TO 4                                          
-   3  CONTINUE                                                          
+      DO 10 J=2,NDATA 
+      IF(EN.LE.XEN(J)) GO TO 11                                        
+   10 CONTINUE                                                          
       J=NDATA                                                           
-   4  YXJ=DLOG(YELT(J))
+   11 YXJ=DLOG(YELT(J))
       YXJ1=DLOG(YELT(J-1))
       XNJ=DLOG(XEN(J))
       XNJ1=DLOG(XEN(J-1))
@@ -18658,33 +26280,57 @@ C USE 1.0 OFFSET IN LOG INTERPOLATION (TO AVOID NEGATIVES)
       Q(2,I)=QELA 
       IF(NANISO.EQ.0) Q(2,I)=QMOM
 C GROSS IONISATION                                                      
-      Q(3,I)=0.0             
-      PEQEL(3,I)=0.5   
-      IF(NANISO.EQ.2) PEQEL(3,I)=0.0                                   
-      IF(EN.LT.E(3)) GO TO 200   
-      IF(EN.GT.XION(NION)) GO TO 123                                   
-      DO 110 J=2,NION                                                   
+      QION(1,I)=0.0             
+      PEQION(1,I)=0.5   
+      IF(NANISO.EQ.2) PEQION(1,I)=0.0                                   
+      IF(EN.LT.EION(1)) GO TO 200   
+C SET OPAL BEATY ENERGY SPLITTING
+      EOBY(I)=7.3
+      IF(EN.GT.XION(NIOND)) GO TO 123                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
-      Q(3,I)=(A*EN+B)*1.D-16
+      QION(1,I)=(A*EN+B)*1.D-16
       GO TO 124
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
-  123 GAMMA=(EMASS2+2.0D0*EN)/EMASS2
-      BETA=DSQRT(1.0D0-1.0D0/(GAMMA*GAMMA))
-      BETA2=BETA*BETA
-      X2=1.0D0/BETA2
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
+  123 X2=1.0D0/BETA2
       X1=X2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
-      Q(3,I)=CONST*(AM2*X1+C*X2)/0.99
+      QION(1,I)=CONST*(AM2*X1+C*X2)/0.99
   124 CONTINUE  
+C CALCULATE IONISATION-EXCITATION AND SPLIT IONISATION INTO
+C  IONISATION ONLY AND IONISATION+EXCITATION
+      QION(2,I)=0.0
+      IF(EN.LE.EION(2)) GO TO 190
+      QION(2,I)=4.400/(EION(2)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EION(2)))-BETA2)*BBCONST*EN/(EN+EION(2)+E(3))
+      IF(QION(2,I).LT.0.0) QION(2,I)=0.0  
+  190 CONTINUE
+C FIND IONISATION ONLY
+      QION(1,I)=QION(1,I)-QION(2,I)
 C   USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR 
 C ENERGIES ABOVE 2 * IONISATION ENERGY 
 C  ANISOTROPIC DISTRIBUTION SAME AS ELASTIC AT ENERGY OFFSET BY
 C  IONISATION ENERGY       
-      IF(EN.LE.(2.0*E(3))) GO TO 200
-      PEQEL(3,I)=PEQEL(2,(I-IOFF))
+      IF(EN.LE.(2.0*EION(1))) GO TO 191
+      PEQION(1,I)=PEQEL(2,(I-IOFF))
+      PEQION(2,I)=PEQION(1,I)
+C CALCULATE K-SHELL IONISATION
+  191 QION(3,I)=0.0D0
+      IF(EN.LE.EION(3)) GO TO 198     
+      DO 192 J=2,NKSH                                                   
+      IF(EN.LE.XKSH(J)) GO TO 193                                       
+  192 CONTINUE                                                          
+      J=NKSH                                                   
+  193 A=(YKSH(J)-YKSH(J-1))/(XKSH(J)-XKSH(J-1))                         
+      B=(XKSH(J-1)*YKSH(J)-XKSH(J)*YKSH(J-1))/(XKSH(J-1)-XKSH(J))       
+      QION(3,I)=(A*EN+B)*1.D-16
+      PEQION(3,I)=PEQION(1,I)
+C COORECT DISSOCIATIVE IONISATION FOR SPLIT INTO K-SHELL
+      QION(2,I)=QION(2,I)-QION(3,I)
+  198 CONTINUE
 C                                      
 C ATTACHMENT                                               
   200 Q(4,I)=0.0                                                        
@@ -18702,16 +26348,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0                              
       IF(EN.LE.E(3)) GO TO 300
-      IF(EN.GT.XION(NION)) GO TO 280 
-      DO 260 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 280 
+      DO 260 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 270
   260 CONTINUE
-      J=NION
+      J=NIOND
   270 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))
       Q(5,I)=(A*EN+B)*1.D-16
       GO TO 290
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   280 Q(5,I)=CONST*(AM2*X1+C*X2)
   290 CONTINUE
 C   USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR 
@@ -18734,7 +26380,7 @@ C V4  SUPERELASTIC ISOTROPIC
   320 A=(YVBV4(J)-YVBV4(J-1))/(XVBV4(J)-XVBV4(J-1))                     
       B=(XVBV4(J-1)*YVBV4(J)-XVBV4(J)*YVBV4(J-1))/(XVBV4(J-1)-XVBV4(J))
       EFAC=DSQRT(1.0-(EIN(1)/EN))
-      QIN(1,I)=0.077*DLOG((EFAC+1.0)/(EFAC-1.0))/EN
+      QIN(1,I)=0.076*DLOG((EFAC+1.0)/(EFAC-1.0))/EN     
       QIN(1,I)=QIN(1,I)+(EN+EIN(2))*(A*(EN+EIN(2))+B)/EN
       QIN(1,I)=QIN(1,I)*APOPV4*1.D-16 
       QIN(1,I)=QIN(1,I)/DEGV4                         
@@ -18749,7 +26395,7 @@ C V4   ANISOTROPIC
   370 A=(YVBV4(J)-YVBV4(J-1))/(XVBV4(J)-XVBV4(J-1))                     
       B=(XVBV4(J-1)*YVBV4(J)-XVBV4(J)*YVBV4(J-1))/(XVBV4(J-1)-XVBV4(J)) 
       EFAC=DSQRT(1.0-(EIN(2)/EN))
-      QIN(2,I)=0.077*DLOG((1.0+EFAC)/(1.0-EFAC))/EN
+      QIN(2,I)=0.076*DLOG((1.0+EFAC)/(1.0-EFAC))/EN     
       ELF=EN-EIN(2)
       FWD=DLOG((EN+ELF)/(EN+ELF-2.0*DSQRT(EN*ELF)))
       BCK=DLOG((EN+ELF+2.0*DSQRT(EN*ELF))/(EN+ELF))
@@ -18761,6 +26407,7 @@ C V2 SUPERELASTIC ISOTROPIC
   400 QIN(3,I)=0.0
       PEQIN(3,I)=0.5
       IF(EN.LE.0.0) GO TO 450
+      IF((EN+EIN(4)).GT.XVBV2(NVIBV2)) GO TO 421
       DO 410 J=2,NVIBV2
       IF((EN+EIN(4)).LE.XVBV2(J)) GO TO 420
   410 CONTINUE
@@ -18770,10 +26417,15 @@ C V2 SUPERELASTIC ISOTROPIC
       QIN(3,I)=(EN+EIN(4))*(A*(EN+EIN(4))+B)/EN
       QIN(3,I)=QIN(3,I)*APOPV2*1.D-16
       QIN(3,I)=QIN(3,I)/DEGV2
+      GO TO 450
+C SCALE BY 1/E**2 ABOVE XVBV2(NVIBV2) EV
+  421 QIN(3,I)=YVBV2(NVIBV2)*(XVBV2(NVIBV2)/(EN+EIN(4)))**2*APOPV2*
+     /1.D-16/DEGV2
 C V2 ANISOTROPIC
   450 QIN(4,I)=0.0
       PEQIN(4,I)=0.5
       IF(EN.LE.EIN(4)) GO TO 500
+      IF(EN.GT.XVBV2(NVIBV2)) GO TO 471
       DO 460 J=2,NVIBV2
       IF(EN.LE.XVBV2(J)) GO TO 470
   460 CONTINUE
@@ -18781,19 +26433,26 @@ C V2 ANISOTROPIC
   470 A=(YVBV2(J)-YVBV2(J-1))/(XVBV2(J)-XVBV2(J-1))                     
       B=(XVBV2(J-1)*YVBV2(J)-XVBV2(J)*YVBV2(J-1))/(XVBV2(J-1)-XVBV2(J)) 
       QIN(4,I)=(A*EN+B)*APOPGS*1.D-16
-      PEQIN(4,I)=1.5-RAT
+      GO TO 472
+C SCALE BY 1/E**2 ABOVE XVBV2(NVIBV2) EV
+  471 QIN(4,I)=YVBV2(NVIBV2)*(XVBV2(NVIBV2)/EN)**2*APOPGS*1.D-16
+  472 PEQIN(4,I)=1.5-RAT
 C V1  ANISOTROPIC                                                        
   500 QIN(5,I)=0.0
       PEQIN(5,I)=0.5                                                  
-      IF(EN.LE.EIN(5)) GO TO 550                                        
+      IF(EN.LE.EIN(5)) GO TO 550
+      IF(EN.GT.XVBV1(NVIBV1)) GO TO 521                               
       DO 510 J=2,NVIBV1                                                 
       IF(EN.LE.XVBV1(J)) GO TO 520                                      
   510 CONTINUE                                                          
       J=NVIBV1                                                          
   520 A=(YVBV1(J)-YVBV1(J-1))/(XVBV1(J)-XVBV1(J-1))                     
       B=(XVBV1(J-1)*YVBV1(J)-XVBV1(J)*YVBV1(J-1))/(XVBV1(J-1)-XVBV1(J))
-      QIN(5,I)=(A*EN+B)*1.D-16 
-      PEQIN(5,I)=1.5-RAT     
+      QIN(5,I)=(A*EN+B)*1.D-16
+      GO TO 522 
+C SCALE BY 1/E**2 ABOVE XVBV1(NVIBV1) EV
+  521 QIN(5,I)=YVBV1(NVIBV1)*(XVBV1(NVIBV1)/EN)**2*1.D-16 
+  522 PEQIN(5,I)=1.5-RAT     
 C V3  ANISOTROPIC                                                       
   550 QIN(6,I)=0.0                                                      
       IF(EN.LE.EIN(6)) GO TO 600                                        
@@ -18814,232 +26473,382 @@ C RATIO OF MT TO TOTAL X-SECT FOR RESONANCE PART =RAT
       PEQIN(6,I)=0.5+(QIN(6,I)-XMT)/QIN(6,I)
 C  VIBRATION HARMONICS 1 (ISOTROPIC)                                  
   600 QIN(7,I)=0.0
-      PEQIN(7,I)=0.5                                                  
-      IF(EN.LE.EIN(7)) GO TO 650                                        
+      PEQIN(7,I)=0.5               
+      IF(NANISO.EQ.2) PEQIN(7,I)=0.0
+      IF(EN.LE.EIN(7)) GO TO 650    
+      IF(EN.GT.XVBH1(NVIBH1)) GO TO 621
       DO 610 J=2,NVIBH1                                                 
       IF(EN.LE.XVBH1(J)) GO TO 620                                      
   610 CONTINUE                                                          
       J=NVIBH1                                                          
   620 A=(YVBH1(J)-YVBH1(J-1))/(XVBH1(J)-XVBH1(J-1))                     
       B=(XVBH1(J-1)*YVBH1(J)-XVBH1(J)*YVBH1(J-1))/(XVBH1(J-1)-XVBH1(J)) 
-      QIN(7,I)=(A*EN+B)*1.D-16                         
+      QIN(7,I)=(A*EN+B)*1.D-16         
+      GO TO 650
+C SCALE BY 1/E**2 ABOVE XVBH1(NVBH1) EV
+  621 QIN(7,I)=YVBH1(NVIBH1)*(XVBH1(NVIBH1)/EN)**2*1.D-16
 C  VIBRATION HARMONICS 2  (ISOTROPIC)                                    
   650 QIN(8,I)=0.0                   
-      PEQIN(8,I)=0.5                                   
-      IF(EN.LE.EIN(8)) GO TO 700                                        
+      PEQIN(8,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(8,I)=0.0                                   
+      IF(EN.LE.EIN(8)) GO TO 700    
+      IF(EN.GT.XVBH2(NVIBH2)) GO TO 671                                
       DO 660 J=2,NVIBH2                                                 
       IF(EN.LE.XVBH2(J)) GO TO 670                                      
   660 CONTINUE                                                          
       J=NVIBH2                                                          
   670 A=(YVBH2(J)-YVBH2(J-1))/(XVBH2(J)-XVBH2(J-1))                     
       B=(XVBH2(J-1)*YVBH2(J)-XVBH2(J)*YVBH2(J-1))/(XVBH2(J-1)-XVBH2(J)) 
-      QIN(8,I)=(A*EN+B)*1.D-16      
-C ATTACHMENT - DEATTACHMENT RESONANCE VIA H- AT 9.8EV RESONANCE
+      QIN(8,I)=(A*EN+B)*1.D-16 
+      GO TO 700
+C SCALE BY 1/E**2 ABOVE XVBH2(NVIBH2) EV
+  671 QIN(8,I)=YVBH2(NVIBH2)*(XVBH2(NVIBH2)/EN)**2*1.D-16
+C TRIPLET DISSOCIATION 7.5EV
   700 QIN(9,I)=0.0
       PEQIN(9,I)=0.5
-      IF(EN.LE.EIN(9)) GO TO 800
-      IF(EN.GT.XDET(NDET)) GO TO 800
-      DO 710 J=2,NDET
-      IF(EN.LE.XDET(J)) GO TO 720
-  710 CONTINUE
-      J=NDET
-  720 A=(YDET(J)-YDET(J-1))/(XDET(J)-XDET(J-1))
-      B=(XDET(J-1)*YDET(J)-XDET(J)*YDET(J-1))/(XDET(J-1)-XDET(J))
-      QIN(9,I)=(A*EN+B)*1.D-16              
-C  DISSOCIATIVE EXCITATION                                               
-  800 QIN(10,I)=0.0
+      IF(NANISO.EQ.2) PEQIN(9,I)=0.0
+      IF(EN.LE.EIN(9)) GO TO 705
+      IF(EN.GT.XTR1(NTRP1)) GO TO 703
+      DO 701 J=2,NTRP1
+      IF(EN.LE.XTR1(J)) GO TO 702
+  701 CONTINUE
+      J=NTRP1
+  702 A=(YTR1(J)-YTR1(J-1))/(XTR1(J)-XTR1(J-1))
+      B=(XTR1(J-1)*YTR1(J)-XTR1(J)*YTR1(J-1))/(XTR1(J-1)-XTR1(J))
+      QIN(9,I)=(A*EN+B)*1.D-16
+      GO TO 704
+C SCALE BY 1/E**2 ABOVE XTR1(NTRP1) EV
+  703 QIN(9,I)=YTR1(NTRP1)*(XTR1(NTRP1)/EN)**2*1.D-16
+  704 IF(EN.LE.(3.0*EIN(9))) GO TO 705
+      PEQIN(9,I)=PEQEL(2,(I-IOFFN(9)))                                 
+C ATTACHMENT - DEATTACHMENT RESONANCE VIA H- AT 9.8EV RESONANCE
+  705 QIN(10,I)=0.0
       PEQIN(10,I)=0.5
-      IF(NANISO.EQ.2) PEQIN(10,I)=0.0                            
-      IF(EN.LE.EIN(10)) GO TO 850  
-      IF(EN.GT.XDIS1(NDIS1)) GO TO 850                                 
-      DO 810 J=2,NDIS1                                                  
-      IF(EN.LE.XDIS1(J)) GO TO 820                                      
-  810 CONTINUE                                                          
-      J=NDIS1                                                           
-  820 A=(YDIS1(J)-YDIS1(J-1))/(XDIS1(J)-XDIS1(J-1))                     
-      B=(XDIS1(J-1)*YDIS1(J)-XDIS1(J)*YDIS1(J-1))/(XDIS1(J-1)-XDIS1(J)) 
-      QIN(10,I)=(A*EN+B)*1.D-16 
-      IF(EN.LE.(3.0*EIN(10))) GO TO 850
-      PEQIN(10,I)=PEQEL(2,(I-IOFF10))                                  
-  850 CONTINUE                                                          
-C  DISSOCIATIVE EXCITATION                                               
-      QIN(11,I)=0.0
+      IF(NANISO.EQ.2) PEQIN(10,I)=0.0
+      IF(EN.LE.EIN(10)) GO TO 708
+      IF(EN.GT.XDET(NDET)) GO TO 708
+      DO 706 J=2,NDET
+      IF(EN.LE.XDET(J)) GO TO 707
+  706 CONTINUE
+      J=NDET
+  707 A=(YDET(J)-YDET(J-1))/(XDET(J)-XDET(J-1))
+      B=(XDET(J-1)*YDET(J)-XDET(J)*YDET(J-1))/(XDET(J-1)-XDET(J))
+      QIN(10,I)=(A*EN+B)*1.D-16
+C TRIPLET DISSOCIATION  AT 8.5 EV
+  708 QIN(11,I)=0.0
       PEQIN(11,I)=0.5
-      IF(NANISO.EQ.2) PEQIN(11,I)=0.0                       
-      IF(EN.LE.EIN(11)) GO TO 900            
-      IF(EN.GT.XDIS2(NDIS2)) GO TO 880                          
-      DO 860 J=2,NDIS2                                                  
-      IF(EN.LE.XDIS2(J)) GO TO 870                                      
-  860 CONTINUE                                                          
-      J=NDIS2                                                           
-  870 A=(YDIS2(J)-YDIS2(J-1))/(XDIS2(J)-XDIS2(J-1))                     
-      B=(XDIS2(J-1)*YDIS2(J)-XDIS2(J)*YDIS2(J-1))/(XDIS2(J-1)-XDIS2(J)) 
+      IF(NANISO.EQ.2) PEQIN(11,I)=0.0
+      IF(EN.LE.EIN(11)) GO TO 713
+      IF(EN.GT.XTR2(NTRP2)) GO TO 711
+      DO 709 J=2,NTRP2
+      IF(EN.LE.XTR2(J)) GO TO 710
+  709 CONTINUE
+      J=NTRP2
+  710 A=(YTR2(J)-YTR2(J-1))/(XTR2(J)-XTR2(J-1))
+      B=(XTR2(J-1)*YTR2(J)-XTR2(J)*YTR2(J-1))/(XTR2(J-1)-XTR2(J))
       QIN(11,I)=(A*EN+B)*1.D-16
-      GO TO 890
-C USE BORN-BETHE X-SECTION ABOVE XDIS2(NDIS2) EV
-  880 QIN(11,I)=CONST*(AM2EXC*X1+CEXC*X2)*0.176
-  890 IF(EN.LE.(3.0*EIN(11))) GO TO 900
-      PEQIN(11,I)=PEQEL(2,(I-IOFF11))                                   
-  900 CONTINUE                                                          
-C    DISSOCIATIVE EXCITATION                                             
-      QIN(12,I)=0.0 
+      GO TO 712
+C SCALE BY 1/E**2 ABOVE XTR2(NTRP2) EV
+  711 QIN(11,I)=YTR2(NTRP2)*(XTR2(NTRP2)/EN)**2*1.D-16
+  712 IF(EN.LE.(3.0*EIN(11))) GO TO 713
+      PEQIN(11,I)=PEQEL(2,(I-IOFFN(11)))                               
+C SINGLET DISSOCIATION AT 8.75 EV USE BEF SCALING WITH F=0.0271
+  713 QIN(12,I)=0.0
       PEQIN(12,I)=0.5
-      IF(NANISO.EQ.2) PEQIN(12,I)=0.0                            
-      IF(EN.LE.EIN(12)) GO TO 950
-      IF(EN.GT.XDIS3(NDIS3)) GO TO 930                                
-      DO 910 J=2,NDIS3                                                 
-      IF(EN.LE.XDIS3(J)) GO TO 920                                      
-  910 CONTINUE                                                          
-      J=NDIS3
-  920 A=(YDIS3(J)-YDIS3(J-1))/(XDIS3(J)-XDIS3(J-1))                     
-      B=(XDIS3(J-1)*YDIS3(J)-XDIS3(J)*YDIS3(J-1))/(XDIS3(J-1)-XDIS3(J)) 
-      QIN(12,I)=(A*EN+B)*1.D-16
-      GO TO 940
-C USE BORN-BETHE X-SECTION ABOVE XDIS3(NDIS3) EV
-  930 QIN(12,I)=CONST*(AM2EXC*X1+CEXC*X2)*0.251
-  940 IF(EN.LE.(3.0*EIN(12))) GO TO 950
-      PEQIN(12,I)=PEQEL(2,(I-IOFF12))                                   
-  950 CONTINUE                                                          
-C    DISSOCIATIVE EXCITATION                                             
-      QIN(13,I)=0.0
+      IF(NANISO.EQ.2) PEQIN(12,I)=0.0
+      IF(EN.LE.EIN(12)) GO TO 714
+      QIN(12,I)=0.0271/(EIN(12)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(12)))-BETA2)*BBCONST*EN/(EN+EIN(12)+E(3))*1.029
+      IF(QIN(12,I).LT.0.0) QIN(12,I)=0.0       
+      IF(EN.LE.(3.0*EIN(12))) GO TO 714
+      PEQIN(12,I)=PEQEL(2,(I-IOFFN(12)))
+C SINGLET DISSOCIATION AT 9.25 EV USE BEF SCALING WITH F=0.0442
+  714 QIN(13,I)=0.0
       PEQIN(13,I)=0.5
-      IF(NANISO.EQ.2) PEQIN(13,I)=0.0                            
-      IF(EN.LE.EIN(13)) GO TO 990        
-      IF(EN.GT.XDIS4(NDIS4)) GO TO 980                               
-      DO 960 J=2,NDIS4                                                  
-      IF(EN.LE.XDIS4(J)) GO TO 970                                      
-  960 CONTINUE                                                          
-      J=NDIS4                                                           
-  970 A=(YDIS4(J)-YDIS4(J-1))/(XDIS4(J)-XDIS4(J-1))                     
-      B=(XDIS4(J-1)*YDIS4(J)-XDIS4(J)*YDIS4(J-1))/(XDIS4(J-1)-XDIS4(J)) 
-      QIN(13,I)=(A*EN+B)*1.D-16  
-      GO TO 985
-C USE BORN-BETHE X-SECTION ABOVE XDIS4(NDIS4)
-  980 QIN(13,I)=CONST*(AM2EXC*X1+CEXC*X2)*0.573
-  985 IF(EN.LE.(3.0*EIN(13))) GO TO 990
-      PEQIN(13,I)=PEQEL(2,(I-IOFF13))                     
-  990 CONTINUE                                                          
-C    DISSOCIATIVE EXCITATION                                             
-      QIN(14,I)=0.0
-      PEQIN(14,I)=0.5                                           
-      IF(NANISO.EQ.2) PEQIN(14,I)=0.0       
-      IF(EN.LE.EIN(14)) GO TO 1050       
-      IF(EN.GT.XDIS5(NDIS5)) GO TO 1050                              
-      DO 1010 J=2,NDIS5                                                
-      IF(EN.LE.XDIS5(J)) GO TO 1020                                     
- 1010 CONTINUE                                                          
-      J=NDIS5                                                           
- 1020 A=(YDIS5(J)-YDIS5(J-1))/(XDIS5(J)-XDIS5(J-1))                     
-      B=(XDIS5(J-1)*YDIS5(J)-XDIS5(J)*YDIS5(J-1))/(XDIS5(J-1)-XDIS5(J)) 
-      QIN(14,I)=(A*EN+B)*1.D-16  
-      IF(EN.LE.(3.0*EIN(14))) GO TO 1050
-      PEQIN(14,I)=PEQEL(2,(I-IOFF14))                     
- 1050 CONTINUE                                                          
-C  DISSOCIATIVE EXC TO STATES DECAYING VIA CH(A2DELTA TO G.S.)           
-      QIN(15,I)=0.0
+      IF(NANISO.EQ.2) PEQIN(13,I)=0.0
+      IF(EN.LE.EIN(13)) GO TO 715
+      QIN(13,I)=0.0442/(EIN(13)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(13)))-BETA2)*BBCONST*EN/(EN+EIN(13)+E(3))*1.027
+      IF(QIN(13,I).LT.0.0) QIN(13,I)=0.0       
+      IF(EN.LE.(3.0*EIN(13))) GO TO 715
+      PEQIN(13,I)=PEQEL(2,(I-IOFFN(13)))
+C SINGLET DISSOCIATION AT 9.75 EV USE BEF SCALING WITH F=0.0859
+  715 QIN(14,I)=0.0
+      PEQIN(14,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(14,I)=0.0
+      IF(EN.LE.EIN(14)) GO TO 716
+      QIN(14,I)=0.0859/(EIN(14)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(14)))-BETA2)*BBCONST*EN/(EN+EIN(14)+E(3))*1.026
+      IF(QIN(14,I).LT.0.0) QIN(14,I)=0.0       
+      IF(EN.LE.(3.0*EIN(14))) GO TO 716
+      PEQIN(14,I)=PEQEL(2,(I-IOFFN(14)))
+C TRIPLET DISSOCIATION  AT 10.0EV
+  716 QIN(15,I)=0.0
       PEQIN(15,I)=0.5
-      IF(NANISO.EQ.2) PEQIN(15,I)=0.0                             
-      IF(EN.LE.EIN(15)) GO TO 1100
-      IF(EN.GT.XCHD(NCHD)) GO TO 1100                                  
-      DO 1060 J=2,NCHD                                                  
-      IF(EN.LE.XCHD(J)) GO TO 1070                                     
- 1060 CONTINUE                                                          
-      J=NCHD                                                            
- 1070 A=(YCHD(J)-YCHD(J-1))/(XCHD(J)-XCHD(J-1))                     
-      B=(XCHD(J-1)*YCHD(J)-XCHD(J)*YCHD(J-1))/(XCHD(J-1)-XCHD(J)) 
-      QIN(15,I)=(A*EN+B)*1.D-16 
-      IF(EN.LE.(3.0*EIN(15))) GO TO 1100
-      PEQIN(15,I)=PEQEL(2,(I-IOFF15))                                  
- 1100 CONTINUE                                                          
-C  DISSOCIATIVE EXC TO STATES DECAYING VIA CH(B2SIGMA- TO G.S.)          
-      QIN(16,I)=0.0
-      PEQIN(16,I)=0.5 
-      IF(NANISO.EQ.2) PEQIN(16,I)=0.0                               
-      IF(EN.LE.EIN(16)) GO TO 1150 
-      IF(EN.GT.XCHB(NCHB)) GO TO 1150                                  
-      DO 1110 J=2,NCHB                                                  
-      IF(EN.LE.XCHB(J)) GO TO 1120                                     
- 1110 CONTINUE                                                          
-      J=NCHB                                                            
- 1120 A=(YCHB(J)-YCHB(J-1))/(XCHB(J)-XCHB(J-1))                     
-      B=(XCHB(J-1)*YCHB(J)-XCHB(J)*YCHB(J-1))/(XCHB(J-1)-XCHB(J)) 
-      QIN(16,I)=(A*EN+B)*1.D-16
-      IF(EN.LE.(3.0*EIN(16))) GO TO 1150
-      PEQIN(16,I)=PEQEL(2,(I-IOFF16))                                   
- 1150 CONTINUE                                                         
-C  DISSOCIATIVE EXC TO STATES DECAYING VIA H(ALPHA) 
-      QIN(17,I)=0.0                   
+      IF(NANISO.EQ.2) PEQIN(15,I)=0.0
+      IF(EN.LE.EIN(15)) GO TO 721
+      IF(EN.GT.XTR3(NTRP3)) GO TO 719
+      DO 717 J=2,NTRP3
+      IF(EN.LE.XTR3(J)) GO TO 718
+  717 CONTINUE
+      J=NTRP3
+  718 A=(YTR3(J)-YTR3(J-1))/(XTR3(J)-XTR3(J-1))
+      B=(XTR3(J-1)*YTR3(J)-XTR3(J)*YTR3(J-1))/(XTR3(J-1)-XTR3(J))
+      QIN(15,I)=(A*EN+B)*1.D-16
+      GO TO 720
+C SCALE BY 1/E**2 ABOVE XTR3(NTRP3) EV
+  719 QIN(15,I)=YTR3(NTRP3)*(XTR3(NTRP3)/EN)**2*1.D-16
+  720 IF(EN.LE.(3.0*EIN(15))) GO TO 721
+      PEQIN(15,I)=PEQEL(2,(I-IOFFN(15)))                               
+C SINGLET DISSOCIATION AT 10.25 EV USE BEF SCALING WITH F=0.0906
+  721 QIN(16,I)=0.0
+      PEQIN(16,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(16,I)=0.0
+      IF(EN.LE.EIN(16)) GO TO 722
+      QIN(16,I)=0.0906/(EIN(16)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(16)))-BETA2)*BBCONST*EN/(EN+EIN(16)+E(3))*1.024
+      IF(QIN(16,I).LT.0.0) QIN(16,I)=0.0       
+      IF(EN.LE.(3.0*EIN(16))) GO TO 722
+      PEQIN(16,I)=PEQEL(2,(I-IOFFN(16)))
+C SINGLET DISSOCIATION AT 10.75 EV USE BEF SCALING WITH F=0.0841
+  722 QIN(17,I)=0.0
       PEQIN(17,I)=0.5
-      IF(NANISO.EQ.2) PEQIN(17,I)=0.0                       
-      IF(EN.LE.EIN(17)) GO TO 1200   
-      IF(EN.GT.XHAL(NHAL)) GO TO 1200                                  
-      DO 1160 J=2,NHAL                                                  
-      IF(EN.LE.XHAL(J)) GO TO 1170                                     
- 1160 CONTINUE                                                          
+      IF(NANISO.EQ.2) PEQIN(17,I)=0.0
+      IF(EN.LE.EIN(17)) GO TO 723
+      QIN(17,I)=0.0841/(EIN(17)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(17)))-BETA2)*BBCONST*EN/(EN+EIN(17)+E(3))*1.023
+      IF(QIN(17,I).LT.0.0) QIN(17,I)=0.0       
+      IF(EN.LE.(3.0*EIN(17))) GO TO 723
+      PEQIN(17,I)=PEQEL(2,(I-IOFFN(17)))
+C SINGLET DISSOCIATION AT 11.25 EV USE BEF SCALING WITH F=0.1036
+  723 QIN(18,I)=0.0
+      PEQIN(18,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(18,I)=0.0
+      IF(EN.LE.EIN(18)) GO TO 724
+      QIN(18,I)=0.1036/(EIN(18)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(18)))-BETA2)*BBCONST*EN/(EN+EIN(18)+E(3))*1.022
+      IF(QIN(18,I).LT.0.0) QIN(18,I)=0.0       
+      IF(EN.LE.(3.0*EIN(18))) GO TO 724
+      PEQIN(18,I)=PEQEL(2,(I-IOFFN(18)))
+C SINGLET DISSOCIATION AT 11.75 EV USE BEF SCALING WITH F=0.1460
+  724 QIN(19,I)=0.0
+      PEQIN(19,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(19,I)=0.0
+      IF(EN.LE.EIN(19)) GO TO 725
+      QIN(19,I)=0.1460/(EIN(19)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(19)))-BETA2)*BBCONST*EN/(EN+EIN(19)+E(3))*1.021
+      IF(QIN(19,I).LT.0.0) QIN(19,I)=0.0       
+      IF(EN.LE.(3.0*EIN(19))) GO TO 725
+      PEQIN(19,I)=PEQEL(2,(I-IOFFN(19)))
+C SINGLET DISSOCIATION AT 12.25 EV USE BEF SCALING WITH F=0.1548
+  725 QIN(20,I)=0.0
+      PEQIN(20,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(20,I)=0.0
+      IF(EN.LE.EIN(20)) GO TO 726
+      QIN(20,I)=0.1548/(EIN(20)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(20)))-BETA2)*BBCONST*EN/(EN+EIN(20)+E(3))*1.020
+      IF(QIN(20,I).LT.0.0) QIN(20,I)=0.0       
+      IF(EN.LE.(3.0*EIN(20))) GO TO 726
+      PEQIN(20,I)=PEQEL(2,(I-IOFFN(20)))
+C SINGLET DISSOCIATION AT 12.75 EV USE BEF SCALING WITH F=0.1927
+  726 QIN(21,I)=0.0
+      PEQIN(21,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(21,I)=0.0
+      IF(EN.LE.EIN(21)) GO TO 727
+      QIN(21,I)=0.1927/(EIN(21)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(21)))-BETA2)*BBCONST*EN/(EN+EIN(21)+E(3))*1.020
+      IF(QIN(21,I).LT.0.0) QIN(21,I)=0.0       
+      IF(EN.LE.(3.0*EIN(21))) GO TO 727
+      PEQIN(21,I)=PEQEL(2,(I-IOFFN(21)))
+C SINGLET DISSOCIATION AT 13.25 EV USE BEF SCALING WITH F=0.1981
+  727 QIN(22,I)=0.0
+      PEQIN(22,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(22,I)=0.0
+      IF(EN.LE.EIN(22)) GO TO 728
+      QIN(22,I)=0.1981/(EIN(22)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(22)))-BETA2)*BBCONST*EN/(EN+EIN(22)+E(3))*1.019
+      IF(QIN(22,I).LT.0.0) QIN(22,I)=0.0       
+      IF(EN.LE.(3.0*EIN(22))) GO TO 728
+      PEQIN(22,I)=PEQEL(2,(I-IOFFN(22)))
+C  DISSOCIATIVE EXC TO STATES DECAYING VIA CH(A2DELTA TO G.S.)           
+  728 QIN(23,I)=0.0
+      PEQIN(23,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(23,I)=0.0                             
+      IF(EN.LE.EIN(23)) GO TO 731 
+      IF(EN.GT.XCHD(NCHD)) GO TO 731                                   
+      DO 729 J=2,NCHD                                                  
+      IF(EN.LE.XCHD(J)) GO TO 730                                      
+  729 CONTINUE                                                          
+      J=NCHD                                                            
+  730 A=(YCHD(J)-YCHD(J-1))/(XCHD(J)-XCHD(J-1))                     
+      B=(XCHD(J-1)*YCHD(J)-XCHD(J)*YCHD(J-1))/(XCHD(J-1)-XCHD(J)) 
+      QIN(23,I)=(A*EN+B)*1.D-16 
+      IF(EN.LE.(3.0*EIN(23))) GO TO 731
+      PEQIN(23,I)=PEQEL(2,(I-IOFFN(23)))                               
+C  DISSOCIATIVE EXC TO STATES DECAYING VIA CH(B2SIGMA- TO G.S.)          
+  731 QIN(24,I)=0.0
+      PEQIN(24,I)=0.5 
+      IF(NANISO.EQ.2) PEQIN(24,I)=0.0                               
+      IF(EN.LE.EIN(24)) GO TO 734  
+      IF(EN.GT.XCHB(NCHB)) GO TO 734                                   
+      DO 732  J=2,NCHB                                                  
+      IF(EN.LE.XCHB(J)) GO TO 733                                      
+  732 CONTINUE                                                          
+      J=NCHB                                                            
+  733 A=(YCHB(J)-YCHB(J-1))/(XCHB(J)-XCHB(J-1))                     
+      B=(XCHB(J-1)*YCHB(J)-XCHB(J)*YCHB(J-1))/(XCHB(J-1)-XCHB(J)) 
+      QIN(24,I)=(A*EN+B)*1.D-16
+      IF(EN.LE.(3.0*EIN(24))) GO TO 734 
+      PEQIN(24,I)=PEQEL(2,(I-IOFFN(24)))                                
+C SINGLET DISSOCIATION AT 13.75 EV USE BEF SCALING WITH F=0.1628
+  734 QIN(25,I)=0.0
+      PEQIN(25,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(25,I)=0.0
+      IF(EN.LE.EIN(25)) GO TO 735
+      QIN(25,I)=0.1628/(EIN(25)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(25)))-BETA2)*BBCONST*EN/(EN+EIN(25)+E(3))*1.018
+      IF(QIN(25,I).LT.0.0) QIN(25,I)=0.0       
+      IF(EN.LE.(3.0*EIN(25))) GO TO 735
+      PEQIN(25,I)=PEQEL(2,(I-IOFFN(25)))
+C SINGLET DISSOCIATION AT 14.25 EV USE BEF SCALING WITH F=0.1093
+  735 QIN(26,I)=0.0
+      PEQIN(26,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(26,I)=0.0
+      IF(EN.LE.EIN(26)) GO TO 736
+      QIN(26,I)=0.1093/(EIN(26)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(26)))-BETA2)*BBCONST*EN/(EN+EIN(26)+E(3))*1.018
+      IF(QIN(26,I).LT.0.0) QIN(26,I)=0.0       
+      IF(EN.LE.(3.0*EIN(26))) GO TO 736
+      PEQIN(26,I)=PEQEL(2,(I-IOFFN(26)))
+C SINGLET DISSOCIATION AT 14.75 EV USE BEF SCALING WITH F=0.0628
+  736 QIN(27,I)=0.0
+      PEQIN(27,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(27,I)=0.0
+      IF(EN.LE.EIN(27)) GO TO 737
+      QIN(27,I)=0.0628/(EIN(27)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(27)))-BETA2)*BBCONST*EN/(EN+EIN(27)+E(3))*1.017
+      IF(QIN(27,I).LT.0.0) QIN(27,I)=0.0       
+      IF(EN.LE.(3.0*EIN(27))) GO TO 737
+      PEQIN(27,I)=PEQEL(2,(I-IOFFN(27)))
+C SINGLET DISSOCIATION AT 15.25 EV USE BEF SCALING WITH F=0.0297
+  737 QIN(28,I)=0.0
+      PEQIN(28,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(28,I)=0.0
+      IF(EN.LE.EIN(28)) GO TO 738
+      QIN(28,I)=0.0297/(EIN(28)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(28)))-BETA2)*BBCONST*EN/(EN+EIN(28)+E(3))*1.016
+      IF(QIN(28,I).LT.0.0) QIN(28,I)=0.0       
+      IF(EN.LE.(3.0*EIN(28))) GO TO 738
+      PEQIN(28,I)=PEQEL(2,(I-IOFFN(28)))
+C SINGLET DISSOCIATION AT 15.75 EV USE BEF SCALING WITH F=0.0074
+  738 QIN(29,I)=0.0
+      PEQIN(29,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(29,I)=0.0
+      IF(EN.LE.EIN(29)) GO TO 739
+      QIN(29,I)=0.0074/(EIN(29)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(29)))-BETA2)*BBCONST*EN/(EN+EIN(29)+E(3))*1.016
+      IF(QIN(29,I).LT.0.0) QIN(29,I)=0.0       
+      IF(EN.LE.(3.0*EIN(29))) GO TO 739
+      PEQIN(29,I)=PEQEL(2,(I-IOFFN(29)))
+C  DISSOCIATIVE EXC TO STATES DECAYING VIA H(ALPHA) 
+  739 QIN(30,I)=0.0                   
+      PEQIN(30,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(30,I)=0.0                       
+      IF(EN.LE.EIN(30)) GO TO 742    
+      IF(EN.GT.XHAL(NHAL)) GO TO 742                                   
+      DO 740  J=2,NHAL                                                  
+      IF(EN.LE.XHAL(J)) GO TO 741                                      
+  740 CONTINUE                                                          
       J=NHAL                                                            
- 1170 A=(YHAL(J)-YHAL(J-1))/(XHAL(J)-XHAL(J-1))                     
+  741 A=(YHAL(J)-YHAL(J-1))/(XHAL(J)-XHAL(J-1))                     
       B=(XHAL(J-1)*YHAL(J)-XHAL(J)*YHAL(J-1))/(XHAL(J-1)-XHAL(J)) 
-      QIN(17,I)=(A*EN+B)*1.D-16
-      IF(EN.LE.(3.0*EIN(17))) GO TO 1200
-      PEQIN(17,I)=PEQEL(2,(I-IOFF17))                                   
- 1200 CONTINUE                                                          
+      QIN(30,I)=(A*EN+B)*1.D-16
+      IF(EN.LE.(3.0*EIN(30))) GO TO 742 
+      PEQIN(30,I)=PEQEL(2,(I-IOFFN(30)))                               
 C  DISSOCIATIVE EXC TO STATES DECAYING VIA H(BETA)                     
-      QIN(18,I)=0.0
-      PEQIN(18,I)=0.5                                      
-      IF(NANISO.EQ.2) PEQIN(18,I)=0.0            
-      IF(EN.LE.EIN(18)) GO TO 1250
-      IF(EN.GT.XHBE(NHBE)) GO TO 1250                                 
-      DO 1210 J=2,NHBE                                                  
-      IF(EN.LE.XHBE(J)) GO TO 1220                                     
- 1210 CONTINUE                                                          
+  742 QIN(31,I)=0.0
+      PEQIN(31,I)=0.5                                      
+      IF(NANISO.EQ.2) PEQIN(31,I)=0.0            
+      IF(EN.LE.EIN(31)) GO TO 745 
+      IF(EN.GT.XHBE(NHBE)) GO TO 745                                  
+      DO 743  J=2,NHBE                                                  
+      IF(EN.LE.XHBE(J)) GO TO 744                                      
+  743 CONTINUE                                                          
       J=NHBE                                                            
- 1220 A=(YHBE(J)-YHBE(J-1))/(XHBE(J)-XHBE(J-1))                     
+  744 A=(YHBE(J)-YHBE(J-1))/(XHBE(J)-XHBE(J-1))                     
       B=(XHBE(J-1)*YHBE(J)-XHBE(J)*YHBE(J-1))/(XHBE(J-1)-XHBE(J)) 
-      QIN(18,I)=(A*EN+B)*1.D-16  
-      IF(EN.LE.(3.0*EIN(18))) GO TO 1250
-      PEQIN(18,I)=PEQEL(2,(I-IOFF18))                     
- 1250 CONTINUE                                                          
-C                                                                       
-C                                                                       
-      Q(1,I)=Q(2,I)+Q(5,I)+Q(4,I)+QIN(1,I)+QIN(2,I)+QIN(3,I)+QIN(4,I)+
-     /QIN(5,I)+QIN(6,I)+QIN(7,I)+QIN(8,I)+QIN(9,I)+QIN(10,I)+QIN(11,I)+
-     /QIN(12,I)+QIN(13,I)+QIN(14,I)+QIN(15,I)+QIN(16,I)+QIN(17,I)+
-     /QIN(18,I)
+      QIN(31,I)=(A*EN+B)*1.D-16  
+      IF(EN.LE.(3.0*EIN(31))) GO TO 745 
+      PEQIN(31,I)=PEQEL(2,(I-IOFFN(31)))           
+C SINGLET DISSOCIATION AT 20.50 EV USE BEF SCALING WITH F=0.0045
+  745 QIN(32,I)=0.0
+      PEQIN(32,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(32,I)=0.0
+      IF(EN.LE.EIN(32)) GO TO 746
+      QIN(32,I)=0.0045/(EIN(32)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(32)))-BETA2)*BBCONST*EN/(EN+EIN(32)+E(3))*1.037
+      IF(QIN(32,I).LT.0.0) QIN(32,I)=0.0       
+      IF(EN.LE.(3.0*EIN(32))) GO TO 746
+      PEQIN(32,I)=PEQEL(2,(I-IOFFN(32)))
+C SINGLET DISSOCIATION AT 22.00 EV USE BEF SCALING WITH F=0.0045
+  746 QIN(33,I)=0.0
+      PEQIN(33,I)=0.5
+      IF(NANISO.EQ.2) PEQIN(33,I)=0.0
+      IF(EN.LE.EIN(33)) GO TO 747
+      QIN(33,I)=0.0045/(EIN(33)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0
+     /*EIN(33)))-BETA2)*BBCONST*EN/(EN+EIN(33)+E(3))*1.034
+      IF(QIN(33,I).LT.0.0) QIN(33,I)=0.0       
+      IF(EN.LE.(3.0*EIN(33))) GO TO 747
+      PEQIN(33,I)=PEQEL(2,(I-IOFFN(33)))
+  747 CONTINUE
 C
- 1000 CONTINUE                                                          
+      QSUP=QIN(1,I)+QIN(3,I)
+      QVIB=QIN(2,I)+QIN(4,I)+QIN(5,I)+QIN(6,I)+QIN(7,I)+QIN(8,I)
+      QDATT=QIN(10,I)
+      QSING=QIN(12,I)+QIN(13,I)+QIN(14,I)+QIN(16,I)+QIN(17,I)+QIN(18,I)+
+     /QIN(19,I)+QIN(20,I)+QIN(21,I)+QIN(22,I)+QIN(25,I)+QIN(26,I)+
+     /QIN(27,I)+QIN(28,I)+QIN(29,I)+QIN(32,I)+QIN(33,I)
+      QTRIP=QIN(9,I)+QIN(11,I)+QIN(15,I)
+      QEXC=QIN(23,I)+QIN(24,I)+QIN(30,I)+QIN(31,I) 
+      QTTT=QEXC+QTRIP+QSING+QDATT  
+      QWINT=QION(2,I)+QTTT
+      QINEL=QSUP+QVIB+QDATT+QSING+QTRIP+QEXC+Q(5,I)+Q(4,I)      
+      Q(1,I)=Q(2,I)+Q(5,I)+Q(4,I)+QTTT+QSUP+QVIB
+C     WRITE(6,767) EN,Q(1,I),QSUP,QVIB,QDATT,QSING,QTRIP,QEXC,QTTT,QINEL
+C767  FORMAT(' EN=',F9.2,' QTOT=',D12.3,' QSUP=',D12.3,' QVIB=',D12.3,/,
+CC   /' QDATT=',D12.3,' QSING=',D12.3,' QTRIP=',D12.3,' QEXC=',D12.3,/,
+C    /' QTTT=',D12.3,' QINELSUM=',D12.3,/)
+C     WRITE(6,768) EN,QION(1,I),QION(2,I),QWINT
+C 768 FORMAT(' EN=',F9.2,' QION1=',D12.3,' QION2=',D12.3,' QWINTERS=',
+C    /D12.3)
+C 
+ 1000 CONTINUE
 C  SAVE COMPUTE TIME
-      IF(EFINAL.LE.EIN(18)) NIN=17
-      IF(EFINAL.LE.EIN(17)) NIN=16
-      IF(EFINAL.LE.EIN(16)) NIN=15 
-      IF(EFINAL.LE.EIN(15)) NIN=14
-      IF(EFINAL.LE.EIN(14)) NIN=13
-      IF(EFINAL.LE.EIN(13)) NIN=12
-      IF(EFINAL.LE.EIN(12)) NIN=11
-      IF(EFINAL.LE.EIN(11)) NIN=10
-      IF(EFINAL.LE.EIN(10)) NIN=9 
-      IF(EFINAL.LE.EIN(9)) NIN=8
-      IF(EFINAL.LE.EIN(8)) NIN=7    
-      IF(EFINAL.LE.EIN(7)) NIN=6                                        
-      IF(EFINAL.LE.EIN(6)) NIN=5
-      IF(EFINAL.LE.EIN(5)) NIN=4
-      IF(EFINAL.LE.EIN(4)) NIN=3
-C                                                                       
-      RETURN                                                            
-      END    
+      DO 1010 K=1,NIN
+      IF(EFINAL.LE.EIN(K)) THEN
+       NIN=K-1
+       GO TO 1011
+      ENDIF
+ 1010 CONTINUE
+ 1011 CONTINUE
+C
+      RETURN
+      END     
       SUBROUTINE GAS9(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)     
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)     
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(55),YXSEC(55),XATT(16),YATT(16),XION(50),YION(50),  
      /XVIB1(28),YVIB1(28),XVIB2(28),YVIB2(28),XVIB3(28),YVIB3(28),      
      /XVIB4(25),YVIB4(25),XVIB5(19),YVIB5(19),
      /XEXC(25),YEXC(25),XEXC1(23),YEXC1(23),XEXC2(19),YEXC2(19)  
-      CHARACTER*30 SCRPT(226)       
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)       
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,.002,.003,.004,.005,.007,0.01,.014,0.02,       
      /0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.11,0.12,                
      /0.13,0.14,0.16,0.18,0.20,0.24,0.30,0.40,0.50,0.60,                
@@ -19119,13 +26928,14 @@ C GIVES BETTER FIT THAN PREVIOUS DATA SET
 C 1999 MOD USES VIBRATION AT 35.8 MV AND ALSO SUPER ELASTICS.
 C          ALSO MOD TO ELASTIC AT LOW ENERGY BELOW 20 MV
 C ---------------------------------------------------------------------
+      NION=1
       NIN=11  
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0                                                          
       NDATA=55                                                          
-      NION=50                                                           
+      NIOND=50                                                          
       NATT=16                                                           
       NVIB1=28                                                          
       NVIB2=28                                                          
@@ -19184,10 +26994,10 @@ C ---------------------------------------------------------------------
       Q(2,I)=(A*EN+B)*1.D-16                                            
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -19331,19 +27141,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS10(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(59),YXSEC(59),XION(46),YION(46),XATT(16),YATT(16),  
      /XVIB1(28),YVIB1(28),XVIB2(28),YVIB2(28),XVIB3(25),YVIB3(25),      
      /XVIB4(19),YVIB4(19),XEXC1(25),YEXC1(25),XEXC2(23),YEXC2(23),
      /XEXC3(19),YEXC3(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.001,0.002,0.003,0.004,0.005,0.007,0.01,0.014,0.02,
      /0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.11,0.12,                
      /0.13,0.14,0.16,0.18,0.20,0.24,0.30,0.40,0.50,                     
@@ -19412,14 +27223,15 @@ C  SAVE COMPUTE TIME
      /0.25,0.13,0.05,.026,.005/   
 C                                           
       NAME='PROPANE 1999   '                                            
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=8
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0                                                          
       NDATA=59                                                          
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=16                                                           
       NVIB1=28                                                          
       NVIB2=28                                                          
@@ -19470,10 +27282,10 @@ C ---------------------------------------------------------------------
       Q(2,I)=(A*EN+B)*1.0D-16                                           
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -19588,20 +27400,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS11(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)  
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)  
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(122),YELM(122),YELT(122),YEPS(122),
      /XION(38),YION(38),YINC(38),XATT(10),YATT(10),  
      /XVIB1(36),YVIB1(36),XVIB2(30),YVIB2(30),XVIB3(30),YVIB3(30),      
      /XVIB4(35),YVIB4(35),XVIB5(21),YVIB5(21),XEXC1(24),YEXC1(24),
      /XEXC2(21),YEXC2(21),XEXC3(20),YEXC3(20)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME       
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME       
 C ELASTIC                                          
       DATA XEN/0.00,0.001,0.002,0.003,0.004,0.005,0.007,0.01,0.014,0.02,
      /.025,0.03,.035,0.04,0.05,0.06,0.07,0.08,0.09,0.10,
@@ -19774,6 +27587,7 @@ C BORN BETHE VALUES FOR EXCITATIONS
       AM2EXC=5.69 
       CEXC=62.6 
 C
+      NION=1
       NIN=12
       DO 1 J=1,6 
     1 KEL(J)=NANISO
@@ -19786,7 +27600,7 @@ C CAPITELLI-LONGO OR OKHRIMOVSKKY TYPES
       KIN(12)=NANISO
 C                                                                  
       NDATA=122                                                         
-      NION=38                                                           
+      NIOND=38                                                          
       NATT=10                                                           
       NVIB1=36
       NVIB2=30                                                          
@@ -19942,16 +27756,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0 
       IF(EN.LT.E(3)) GO TO 150
-      IF(EN.GT.XION(NION)) GO TO 123                                
-      DO 100 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 123                                
+      DO 100 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 110                                       
   100 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   110 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J)) 
       Q(3,I)=(A*EN+B)*1.D-16 
       GO TO 124
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
   123 GAMMA=(EMASS2+2.0D0*EN)/EMASS2
       BETA=DSQRT(1.0D0-1.0D0/(GAMMA*GAMMA))
       BETA2=BETA*BETA
@@ -20154,13 +27968,14 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS12(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220),
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250),
      /PJ(220) 
       DIMENSION XEN(124),YMOM(124),YEL(124),YVBMOM(124),YVBEL(124),
      /YEPS(124),XION(62),YION(62),YINC(62),XATT(74),YATT(74),
@@ -20171,8 +27986,8 @@ C  SAVE COMPUTE TIME
      /XVPD9(17),YVPD9(17),XVPDH(15),YVPDH(15),      
      /XEXC1(53),YEXC1(53),XEXC2(53),YEXC2(53),XEXC3(51),YEXC3(51),      
      /XEXC4(51),YEXC4(51),XEXC5(51),YEXC5(51),XEXC6(51),YEXC6(51)
-      CHARACTER*30 SCRPT(226)                                           
-      CHARACTER*15 NAME 
+      CHARACTER*50 SCRPT(260)                                           
+      CHARACTER*25 NAME 
 C ELASTIC +ROTATIONAL                                                
       DATA XEN/1.D-6,.001,.002,.004,.007,.010,.014,.020,.030,.040,     
      /0.05,0.06,0.08,0.10,.125,.150,.175,0.20,0.25,0.30,                
@@ -20513,6 +28328,7 @@ C    BORN-BETHE VALUES FOR IONISATION
       AM2=5.60
       C=57.91
 C     
+      NION=1
       NIN=85  
       DO 1 J=1,6
     1 KEL(J)=NANISO
@@ -20542,7 +28358,7 @@ C
       NEXC4=51
       NEXC5=51
       NEXC6=51
-      NION=62                                                           
+      NIOND=62                                                          
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(44.0095*AMU)                                      
       E(3)=13.777               
@@ -20851,16 +28667,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5  
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0                                   
       IF(EN.LE.E(3)) GO TO 30
-      IF(EN.GT.XION(NION)) GO TO 23               
-      DO 21 J=2,NION                                                  
+      IF(EN.GT.XION(NIOND)) GO TO 23               
+      DO 21 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 22                                    
    21 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
    22 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=1.0D-16*(A*EN+B) 
       GO TO 24
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
    23 GAMMA=(EMASS2+2.0D0*EN)/EMASS2
       BETA=DSQRT(1.0D0-1.0D0/(GAMMA*GAMMA))
       BETA2=BETA*BETA
@@ -20890,16 +28706,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0
       IF(EN.LE.E(3)) GO TO 45
-      IF(EN.GT.XION(NION)) GO TO 43
-      DO 41 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 43
+      DO 41 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 42
    41 CONTINUE
-      J=NION
+      J=NIOND
    42 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))       
       Q(5,I)=(A*EN+B)*1.0D-16
       GO TO 44
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
    43 Q(5,I)=CONST*(AM2*X1+C*X2)
    44 CONTINUE
 C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR
@@ -21300,19 +29116,20 @@ C
       RETURN                                                            
       END     
       SUBROUTINE GAS13(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)   
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)      
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(62),YXSEC(62),XION(46),YION(46),XATT(16),YATT(16),  
      /XVIB1(34),YVIB1(34),XVIB2(28),YVIB2(28),XVIB3(28),YVIB3(28),      
      /XVIB4(25),YVIB4(25),XVIB5(19),YVIB5(19),XEXC1(25),YEXC1(25),
      /XEXC2(23),YEXC2(23),XEXC3(19),YEXC3(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,.002,.003,.004,.005,.007,0.01,0.014,0.02,
      /0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.11,0.12,                
      /0.13,0.14,0.16,0.18,0.20,0.23,0.26,0.30,0.35,0.40,                
@@ -21397,13 +29214,14 @@ C FIT TO DRIFT VELOCITY OF FLORIANO GEE AND FREEMAN
 C ----------------------------------------------------------------------       
       NAME='NEO-PENTANE 03 '
 C      
+      NION=1
       NIN=11
       DO 1 J=1,6  
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0                                                     
       NDATA=62                                                          
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=16                                                           
       NVIB1=34
       NVIB2=28                                                          
@@ -21472,10 +29290,10 @@ C
    21 CONTINUE                                                          
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 30                                          
-      DO 22 J=2,NION                                                   
+      DO 22 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 23                                        
    22 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
    23 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -21629,20 +29447,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS14(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220) 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250) 
       DIMENSION ELEV(100),AJL(100),PJ(100) 
       DIMENSION SALPHA(105),EROT(105),AJIN(210),IMAP(210)   
       DIMENSION XEL(24),YEL(24),XVIB1(26),YVIB1(26),XVIB2(27),YVIB2(27),
      /XION(46),YION(46),XATT(20),YATT(20),XEXC(9),YEXC(9),XEXC1(17),  
      /YEXC1(17),XEXC2(15),YEXC2(15)
-      CHARACTER*30 SCRPT(226)             
-      CHARACTER*15 NAME
+      CHARACTER*50 SCRPT(260)             
+      CHARACTER*25 NAME
 C ENERGY LEVELS OF WATER ( UP TO J=9) IN MILLIVOLTS
       DATA ELEV/0.0,2.950,4.604,5.253,8.690,9.856,11.800,16.726,16.882,
      /16.956,17.640,21.946,25.578,26.304,35.363,35.387,27.531,27.876,
@@ -21778,7 +29597,8 @@ C --------------------------------------------------------------------
 C  EXPERIMENTAL DATA NOT ACCURATE IN WATER VAPOUR. ELECTRON SCATTERING  
 C  DATA USED IN ANALYSIS REPRODUCES DRIFT VELOCITY AND DIFFUSION       
 C  COEFFICIENTS TO AN  ACCURACY OF  2%.                               
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=215
       DO 1 J=1,6
     1 KEL(J)=0
@@ -21788,7 +29608,7 @@ C ---------------------------------------------------------------------
       NEL=24                                                          
       NVIB1=26                                                          
       NVIB2=27                                                          
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=20                                                           
       NEXC=9                                                            
       NEXC1=17                                                          
@@ -22073,10 +29893,10 @@ C
 C                                                                       
    25 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 50                                           
-      DO 30  J=2,NION                                                   
+      DO 30  J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 40                                        
    30 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
    40 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -22192,20 +30012,21 @@ C
       RETURN                                                            
       END
       SUBROUTINE GAS15(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(48),YXSEC(48),XVIB1(64),YVIB1(64),YVIB2(64),YVIB3(64
      /),YVIB4(64),XION(60),YION(60),X3ATT(30),Y3ATT(30),XATT(33),YATT(33
      /),XEXC1(21),YEXC1(21),XEXC2(15),YEXC2(15),XEXC3(18),YEXC3(18),    
      /XEXC4(13),YEXC4(13),XEXC5(25),YEXC5(25),XEXC6(22),YEXC6(22),      
      /XROT(34),YROT(34)                          
-      CHARACTER*30 SCRPT(226)                         
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)                         
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,.003,.005,.007,.0085,0.01,.015,0.02,0.03,
      /0.04,0.06,0.08,0.10,0.12,0.15,0.20,0.30,0.40,0.50,            
      /0.60,0.80,1.00,1.20,1.50,2.00,2.50,3.00,4.00,5.00,
@@ -22342,6 +30163,7 @@ C ----------------------------------------------------------------------
 C  
       NAME=' OXYGEN  2003  ' 
 C       
+      NION=1
       NIN=12  
       DO 1 J=1,6
     1 KEL(J)=0
@@ -22353,7 +30175,7 @@ C
       NVIB2=64                                                          
       NVIB3=64                                                          
       NVIB4=64                                                          
-      NION=60                                                           
+      NIOND=60                                                          
       NATT=33                                                           
       N3ATT=30                                                          
       NEXC1=21                                                          
@@ -22416,10 +30238,10 @@ C
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -22602,13 +30424,14 @@ C
       RETURN                                                            
       END  
       SUBROUTINE GAS16(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220),
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250),
      /PJ(220) 
       DIMENSION XELA(184),YELA(184),YMOM(184),YEPS(184),
      /XROT(70),YROT(70),
@@ -22633,8 +30456,8 @@ C
      /XSNG13(54),YSNG13(54),YSG13M(54),XSNG14(54),YSNG14(54),YSG14M(54),
      /XSNG15(28),YSNG15(28),YSG15M(28),
      /XION(87),YION(87),YINC(87)
-      CHARACTER*30 SCRPT(226)      
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)      
+      CHARACTER*25 NAME                                                 
       DATA XELA/0.00,.001,.0015,.0018,.002,.0025,.003,.004,.005,.006,
      /.007,.008,.009,.010,.012,.015,.018,.020,.025,.030,
      /0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.15,0.18,    
@@ -23425,10 +31248,13 @@ C BORN BETHE VALUES FOR COUNTING IONISATION
       EMASS2=1021997.804
       AM2=3.35
       C=38.1
+C 
+      NION=1
+      NIN=121
 C ANGULAR DISTRIBUTIONS OF ELASTIC AND IONISATION CAN BE EITHER
 C ISOTROPIC (KEL=0) OR
 C CAPITELLI-LONGO (KEL =1)  OR OKHRIMOVSKKY TYPES (KEL=2)
-      NIN=121 
+C 
       DO 1 J=1,6
     1 KEL(J)=NANISO
 C USE ISOTROPIC SCATTERING FOR ROTATIONAL AND VIBRATIONAL STATES
@@ -23485,7 +31311,7 @@ C
       NSNG13=54
       NSNG14=54
       NSNG15=28                             
-      NION=87                                                           
+      NIOND=87                                                         
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(27.7940*AMU)                                      
       E(3)=15.581  
@@ -23764,16 +31590,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0
       IF(EN.LT.E(3)) GO TO 43   
-      IF(EN.GT.XION(NION)) GO TO 41                                 
-      DO 30 J=2,NION                                                    
+      IF(EN.GT.XION(NIOND)) GO TO 41                                 
+      DO 30 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 40                                        
    30 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
    40 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                   
       GO TO 42
-C USE BORN BETHE X-SECTION ABOVE  XION(NION) EV 
+C USE BORN BETHE X-SECTION ABOVE  XION(NIOND) EV 
    41 GAMMA=(EMASS2+2.0D0*EN)/EMASS2
       BETA=DSQRT(1.0D0-1.0D0/(GAMMA*GAMMA))
       BETA2=BETA*BETA
@@ -23794,16 +31620,16 @@ C COUNTING IONISATION
       PEQEL(5,I)=0.5
       IF(NANISO.EQ.2) PEQEL(5,I)=0.0
       IF(EN.LE.E(3)) GO TO 48 
-      IF(EN.GT.XION(NION)) GO TO 46 
-      DO 44 J=2,NION
+      IF(EN.GT.XION(NIOND)) GO TO 46 
+      DO 44 J=2,NIOND
       IF(EN.LE.XION(J)) GO TO 45 
    44 CONTINUE
-      J=NION
+      J=NIOND
    45 A=(YINC(J)-YINC(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YINC(J)-XION(J)*YINC(J-1))/(XION(J-1)-XION(J))       
       Q(5,I)=(A*EN+B)*1.D-16    
       GO TO 47
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
    46 Q(5,I)=CONST*(AM2*X1+C*X2)                    
    47 CONTINUE
 C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON AT
@@ -24591,19 +32417,20 @@ C
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS17(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)       
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)       
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(58),YXSEC(58),XION(48),YION(48),XATT(23),YATT(23),  
      /XROT1(18),YROT1(18),XVIB1(24),YVIB1(24),XVIB2(23),YVIB2(23),      
      /XEXC1(32),YEXC1(32),
      /XAT3(18),YAT3(18)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.005,.007,0.01,.012,.015,0.02,0.03,0.04,0.05,       
      /0.06,0.07,0.08,0.09,0.10,0.12,0.15,0.20,0.30,0.40,                
      /0.50,0.60,0.70,0.80,0.90,1.00,1.20,1.50,2.00,3.00,                
@@ -24669,13 +32496,15 @@ C     WRITE(6,100)
 C 100 FORMAT(1H1)
 C     WRITE(6,100) FAC
 C 101 FORMAT(' 3BODY ATTACHMENT INCLUDED DENSITY SCALING FACTOR =',F7.4)
+C 
+      NION=1
       NIN=4 
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0                                                          
       NDATA=58                                                          
-      NION=48                                                           
+      NIOND=48                                                          
       NATT=23                                                           
       NAT3=18
       NROT1=18
@@ -24715,10 +32544,10 @@ C 101 FORMAT(' 3BODY ATTACHMENT INCLUDED DENSITY SCALING FACTOR =',F7.4)
       Q(2,I)=(A*EN+B)*1.0D-16                                           
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                 
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -24798,19 +32627,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS18(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)      
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)      
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220),
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250),
      /PJ(60)    
       DIMENSION XEN(69),YXSEC(69),XION(47),YION(47),XATT(51),YATT(51),  
      /XEXC1(28),YEXC1(28),XEXC2(24),YEXC2(24),XEXC3(25),YEXC3(25),
      /XVIBH(19),YVIBH(19),XVIBR(19),YVIBR(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME    
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME    
 C ELASTIC +ROTATION MOMENTUM TRANSFER                                                   
       DATA XEN/0.00,0.001,.0034,0.01,.012,.014,.017,0.02,.025,0.03,     
      /0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.14,0.17,                
@@ -24907,6 +32737,8 @@ C
       ARESV3=0.30
       ARES2V1=0.95
       ARESVR=0.62
+C
+      NION=1
       NIN=131
       DO 1 J=1,6
     1 KEL(J)=0
@@ -24914,7 +32746,7 @@ C
       KIN(J)=0
     2 IF(J.LE.120) KIN(J)=1                                             
       NDATA=69                                                          
-      NION=47                                                           
+      NIOND=47                                                          
       NATT=51                                                           
       NVIBH=19
       NVIBR=19
@@ -25119,10 +32951,10 @@ C  98 FORMAT(2X,'TRANS ENERGY=',/,10(2X,D10.3))
 C                                           
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 50                                 
-      DO 30 J=2,NION                                                   
+      DO 30 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 40                                        
    30 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                          
    40 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16   
@@ -25321,19 +33153,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS19(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)      
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)      
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(50),YXSEC(50),XVIB1(31),YVIB1(31),XVIB2(31),        
      /YVIB2(31),XVIB3(18),YVIB3(18),XVIB4(31),YVIB4(31),XVIB5(21),
      /YVIB5(21),XEXC1(17),YEXC1(17),XEXC2(24),YEXC2(24),XEXC3(23),
      /YEXC3(23),XION(57),YION(57),XATT(16),YATT(16)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.01,.014,0.02,.025,0.03,0.04,0.05,0.06,0.07,       
      /0.08,0.09,0.10,0.12,0.14,0.17,0.20,0.25,0.30,0.40,                
      /0.50,0.60,0.80,1.00,1.40,2.00,3.00,4.00,5.00,6.00,                
@@ -25416,7 +33249,9 @@ C  1999 INCLUDED VIBRATIONAL RESONACE SHAPE FROM WALKER ET AL
 C   REF J.CHEM.PHYS. 69(1978) 5532
 C   NOW FITS ARGON-ETHENE MIXTURE DATA OF JEAN-MARIE ET AL.
 C   AND SCHMIDTS DATA IN PURE ETHENE
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=10 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -25431,7 +33266,7 @@ C ---------------------------------------------------------------------
       NEXC1=17                                                          
       NEXC2=24
       NEXC3=23
-      NION=57                                                           
+      NIOND=57                                                          
       NATT=16                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(28.05376*AMU)                                     
@@ -25484,10 +33319,10 @@ C ---------------------------------------------------------------------
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                 
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -25654,19 +33489,20 @@ C
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS20(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)  
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)  
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(58),YXSEC(58),XVIB1(37),YVIB1(37),XVIB2(27),        
      /YVIB2(27),XVIB3(27),YVIB3(27),XEXC1(28),YEXC1(28),XEXC2(17),
      /YEXC2(17),XEXC3(32),YEXC3(32),XION(42),YION(42),
      /XATT(16),YATT(16)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,       
      /0.10,0.12,0.14,0.17,0.20,0.25,0.30,0.40,0.50,0.60,                
      /0.80,1.00,1.20,1.40,1.70,2.00,2.50,3.00,4.00,5.00,                
@@ -25746,6 +33582,8 @@ C ARGON MIXTURE DATA ( DRIFT VELOCITY ONLY) :
 C          CHRISTOPHOROU ET AL NUCL.INST.METH. 163(1979)141
 C    TOWNSEND COEFICIENT : HEYLEN
 C ---------------------------------------------------------------------
+C 
+      NION=1
       NIN=7
       DO 1 J=1,6
     1 KEL(J)=0
@@ -25758,7 +33596,7 @@ C ---------------------------------------------------------------------
       NEXC1=28                                                          
       NEXC2=17
       NEXC3=32
-      NION=42                                                           
+      NIOND=42                                                         
       NATT=16                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(26.03788*AMU)                                     
@@ -25802,10 +33640,10 @@ C CORRECT ENERGY
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -25919,13 +33757,14 @@ C
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS21(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XELM(142),YELM(142),YELT(142),YEPS(142),
      /XROT0(53),YROT0(53),XROT1(43),YROT1(43),XROT2(28),YROT2(28),
      /XROT3(28),YROT3(28),XVIB1(43),YVIB1(43),XVIB2(42),YVIB2(42),
@@ -25936,8 +33775,8 @@ C
      /XEXC1(20),YEXC1(20),XEXC2(23),YEXC2(23),
      /XATT(18),YATT(18),XION(92),YION(92),IOFFN(106),PJ(7),ERLVL(7),
      /BEF(10)
-      CHARACTER*30 SCRPT(226)                                       
-      CHARACTER*15 NAME 
+      CHARACTER*50 SCRPT(260)                                       
+      CHARACTER*25 NAME 
 C --------------------------------------------------------------      
 C ELASTIC MT                                                   
       DATA XELM/0.00,.001,.0012,.0015,.0018,.002,.0025,.003,.004,.005,
@@ -26237,6 +34076,7 @@ C BORN-BETHE CONSTANTS FOR IONISATION
       AM2=0.642
       C=8.30
 C-----------------------------------------------------------------------
+      NION=1  
       NIN=106 
       DO 1 J=1,6
     1 KEL(J)=NANISO
@@ -26262,7 +34102,7 @@ C SET VIBRATION AND ROTATION TO ISOTROPIC
       NA3SG=5
       NE3SG=5
       NEFSG=34                                                         
-      NION=92                                                           
+      NIOND=92                                                         
       NATT=18                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(2.015650*AMU)   
@@ -26629,16 +34469,16 @@ C GROSS IONISATION
       PEQEL(3,I)=0.5D0
       IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0
       IF(EN.LT.E(3)) GO TO 200    
-      IF(EN.GT.XION(NION)) GO TO 121                                  
-      DO 110 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 121                                  
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                    
       GO TO 122
-C USE BORN-BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
   121 X2=1.0D0/BETA2
       X1=X2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
       Q(3,I)=CONST*(AM2*X1+C*X2)
@@ -27622,8 +35462,8 @@ C---------------------------------------------------------------------
       Q(1,I)=Q(1,I)+Q(2,I)+Q(4,I)+Q(5,I) 
 C     WRITE(6,991) EN,Q(2,I),Q(4,I),Q(5,I),Q(1,I)          
 C 991 FORMAT(' EN=',D12.4,' ELAS=',D12.4,' ATT =',D12.4,'IONS=',D12.4,'
-C    / TOT=',D12.4)                                
-  900 CONTINUE                                                          
+C    / TOT=',D12.4) 
+  900 CONTINUE 
 C  SAVE COMPUTE TIME
       DO 910 K=1,20 
       IF(EFINAL.LE.EIN(K)) THEN
@@ -27636,20 +35476,21 @@ C
       RETURN                                                            
       END 
       SUBROUTINE GAS22(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT) 
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT) 
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(53),YXSEC(53),XROT0(40),YROT0(40),XROT1(42),YROT1(42
      /),XROT2(31),YROT2(31),XROT3(31),YROT3(31),XROT4(31),YROT4(31),
      /XROT5(30),YROT5(30),XVIB1(35),YVIB1(35),XVIB2(35),YVIB2(35),
      /XVIB3(16),YVIB3(16),XVIB4(16),YVIB4(16),XEXC1(20),YEXC1(20),
      /XEXC2(23),YEXC2(23),XATT(18),YATT(18),XION(72),YION(72),PJ(7)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.01,0.02,0.03,0.04,.046,0.05,0.06,0.07,0.08,       
      /0.09,0.10,0.13,0.15,0.20,0.30,0.40,0.50,0.60,0.70,                
      /0.90,1.00,1.10,1.40,1.50,1.60,1.80,2.00,2.50,3.00,                
@@ -27805,7 +35646,9 @@ C  CALCULATE FRACTIONAL POPULATION DENSITY FOR ROTATIONAL STATES
 C     WRITE(6,88) FROT0,FROT1,FROT2,FROT3,FROT4,FROT5,FROT6,FROT7
 C  88 FORMAT(2X,' FROT0=',F9.5,' FROT1=',F9.5,' FROT2=',F9.5,' FROT3=',
 C    /F9.5,' FROT4=',F9.5,' FROT5=',F9.5,' FROT6=',F9.5,' FROT7=',F9.5)                                                            
-C-----------------------------------------------------------------------
+C----------------------------------------------------------------------
+C
+      NION=1
       NIN=15 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -27824,7 +35667,7 @@ C-----------------------------------------------------------------------
       NVIB4=16                                                          
       NEXC1=20                                                          
       NEXC2=23                                                          
-      NION=72                                                           
+      NIOND=72                                                          
       NATT=18                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(4.028204*AMU)                                     
@@ -27882,10 +35725,10 @@ C-----------------------------------------------------------------------
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                    
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -28100,21 +35943,22 @@ C
       RETURN                                                            
       END            
       SUBROUTINE GAS23(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)  
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)  
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220),
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250),
      /PJ(40)     
       DIMENSION XEN(53),YEN(53),XVIB1(52),YVIB1(52),XVIB2(27),YVIB2(27),
      /XVIB3(24),YVIB3(24),XVIB4(23),YVIB4(23),XVIB5(20),YVIB5(20),
      /XVIB6(19),YVIB6(19),XION(90),YION(90),XATT(52),YATT(52),
      /XEXC(30),YEXC(30),XEXC1(26),YEXC1(26),XEXC2(24),YEXC2(24),
      /XEXC3(22),YEXC3(22),XEXC4(21),YEXC4(21),XEXC5(19),YEXC5(19) 
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME 
 C ELASTIC MOMENTUM TRANSFER                                         
       DATA XEN/0.00,.001,.002,.003,.005,.007,.0085,0.01,.015,0.02,
      /0.03,0.04,0.05,0.07,0.10,0.12,0.14,0.16,0.18,0.20,
@@ -28253,6 +36097,7 @@ C -------------------------------------------------------------------
 C        
       NAME='  C-O  2003    '
 C               
+      NION=1
       NIN=64 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -28266,7 +36111,7 @@ C
       NVIB4=23
       NVIB5=20
       NVIB6=19                                                        
-      NION=90                                                           
+      NIOND=90                                                         
       NATT=52                                                           
       NEXC=30                                                           
       NEXC1=26
@@ -28405,10 +36250,10 @@ C  98 FORMAT(2X,'TRANS ENERGY=',/,10(2X,D10.3))
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 50                                           
-      DO 30 J=2,NION                                                   
+      DO 30 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 40                                        
    30 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
    40 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -28600,18 +36445,19 @@ C
       RETURN                                                            
       END       
       SUBROUTINE GAS24(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)     
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)     
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(33),YXSEC(33),XVIB1(29),YVIB1(29),XVIB2(29),YVIB2(29
      /),XVIB3(28),YVIB3(28),XION(25),YION(25),XEXC(26),YEXC(26),        
      /XEXC1(31),YEXC1(31)
-      CHARACTER*30 SCRPT(226)                                           
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)                                           
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.001,0.003,0.007,0.01,0.014,0.02,0.03,0.05,0.07,   
      /0.10,0.14,0.20,0.30,0.40,0.60,0.80,1.00,1.40,2.00,                
      /3.00,5.00,6.00,8.00,10.0,14.0,20.0,40.0,70.0,100.,                
@@ -28663,6 +36509,7 @@ C  HOT IS THE MORE DIFFUSING GAS.
 C                                                                       
       NAME='METHYLAL  HOT  '  
 C      
+      NION=1
       NIN=5  
       DO 1 J=1,6
     1 KEL(J)=0
@@ -28672,7 +36519,7 @@ C
       NVIB1=29                                                          
       NVIB2=29                                                          
       NVIB3=28                                                          
-      NION=25                                                           
+      NIOND=25                                                          
       NEXC=26                                                           
       NEXC1=31                                                          
       E(1)=0.0                                                          
@@ -28712,10 +36559,10 @@ C
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -28790,18 +36637,19 @@ C
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS25(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)     
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)     
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(54),YXSEC(54),XION(29),YION(29),XATT(16),YATT(16),  
      /XVIB3(19),YVIB3(19),XVIB4(28),YVIB4(28),XVIB5(25),YVIB5(25),      
      /XVIB6(19),YVIB6(19),XEXC(27),YEXC(27),XEXC1(35),YEXC1(35)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.004,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,       
      /0.09,0.10,0.11,0.12,0.13,0.14,0.16,0.18,0.20,0.24,                
      /0.30,0.40,0.50,0.60,0.80,1.00,1.40,2.00,3.00,4.00,                
@@ -28869,6 +36717,8 @@ C UPDATES DME92 WITH BETTER FIT TO FANO AND EV/ION PAIR
 C --------------------------------------------------------------------- 
       AVIB1=0.06
       AVIB2=0.35
+C
+      NION=1
       NIN=8
       DO 1 J=1,6  
     1 KEL(J)=0
@@ -28879,7 +36729,7 @@ C ---------------------------------------------------------------------
       NVIB4=28                                                          
       NVIB5=25
       NVIB6=19
-      NION=29                                                           
+      NIOND=29                                                          
       NATT=16                                                           
       NEXC=27                                                           
       NEXC1=35  
@@ -28925,10 +36775,10 @@ C ---------------------------------------------------------------------
       Q(2,I)=(A*EN+B)*1.0D-16                                           
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -29035,20 +36885,22 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END    
       SUBROUTINE GAS26(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)
-      CHARACTER*30 SCRPT(226) 
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)
+      CHARACTER*50 SCRPT(260) 
+      CHARACTER*25 NAME                                                 
 C ----------------------------------------------------------------      
 C    NEW ANALYSIS UPDATED TO DECEMBER 1994                              
 C ---------------------------------------------------------------       
       NAME='REID STEP(ANIS)'                                            
 C                
+      NION=1
       NIN=1
       DO 1 J=1,6
     1 KEL(J)=0
@@ -29095,20 +36947,22 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS27(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)
-      CHARACTER*30 SCRPT(226)     
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)
+      CHARACTER*50 SCRPT(260)     
+      CHARACTER*25 NAME                                                 
 C ----------------------------------------------------------------      
 C    MAXWELL MODEL DECEMBER 1994                                        
 C ---------------------------------------------------------------       
       NAME=' MAXWEL 1994-- '    
-C                                                
+C                
+      NION=1                                
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -29146,20 +37000,22 @@ C
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS28(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT) 
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT) 
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)
-      CHARACTER*30 SCRPT(226)     
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)
+      CHARACTER*50 SCRPT(260)     
+      CHARACTER*25 NAME                                                 
 C ----------------------------------------------------------------      
 C    NEW ANALYSIS UPDATED TO DECEMBER 1994                              
 C ---------------------------------------------------------------       
       NAME=' REID RAMP S=10'  
-C                  
+C                
+      NION=1  
       NIN=1
       DO 1 J=1,6
     1 KEL(J)=0
@@ -29200,19 +37056,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS29(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XENM(56),YXMOM(56),XENT(56),YXTOT(56),
      /XVIB2(22),YVIB2(22),XVIB3(22),YVIB3(22),XVIB4(22),YVIB4(22),
      /XVIB5(22),YVIB5(22),XVIB6(22),YVIB6(22),      
      /XDISS(27),YDISS(27),XATT(26),YATT(26),XION(48),YION(48)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XENM/0.0,0.001,0.002,0.004,0.007,0.01,.015,0.02,.025,0.03,
      /0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.15,0.20, 
      /0.25,0.30,0.35,0.40,0.45,0.50,0.60,0.70,0.80,0.90, 
@@ -29304,7 +37161,8 @@ c    EXCLUDING VIBRATION HARMONICS.
 C    BORN ANGULAR DISTRIBUTION FOR  V1(0.1001) AND V2(0.1523) LEVELS.
 C --------------------------------------------------------------------       
       NAME=' C2F6 -1999--- ' 
-C                                                 
+C                
+      NION=1                                 
       NIN=9  
       DO 1 J=1,6
     1 KEL(J)=0
@@ -29323,7 +37181,7 @@ C
       NVIB6=22
       NDISS=27
       NATT=26
-      NION=48                                                        
+      NIOND=48                                                       
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(138.0118*AMU)                                     
       E(3)=14.48                                                        
@@ -29381,10 +37239,10 @@ C
 C      
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -29546,20 +37404,22 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS30(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
 C ----------------------------------------------------------------      
 C   SF6 FILE FROM ITOH ET AL J.PHYS.D.  26 (1993) 1975-1979              
 C ---------------------------------------------------------------       
       NAME='SF6 ITOH ET AL '                      
-C                           
+C                
+      NION=1           
       NIN=2 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -29803,18 +37663,19 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END
       SUBROUTINE GAS31(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)          
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)     
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)     
       DIMENSION XEL(25),YEL(25),XVIBH(19),YVIBH(19),XION(47),YION(47),
      /XATT(30),YATT(30),XEXC1(18),YEXC1(18)
       DIMENSION ELEV(120),AKL(120),AJL(120),PJ(120)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME 
 C J VALUES OF FIRST 120 LEVELS
       DATA AJL/0.0,1.0,1.0,2.0,2.0,2.0,3.0,3.0,3.0,3.0,
      /4.0,4.0,4.0,4.0,4.0,5.0,5.0,5.0,5.0,5.0,   
@@ -29889,7 +37750,8 @@ C  THE FIRST 120 ROTATIONAL STATES ARE USED IN THE ANALYSIS THEN GROUPED
 C  INTO TRANSITIONS OF EQUAL ENERGY GIVING A TOTAL OF 28 ROTATIONAL 
 C  TRANSITIONS.
 C  DIPOLE ANGULAR DISTRIBUTION USED FOR ROTATIONAL EXCITATIONS.                         
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=34
       DO 1 J=1,6
     1 KEL(J)=0
@@ -29899,7 +37761,7 @@ C SET ANGULAR DISTRIBUTION FLAG FOR ROTATIONAL LEVELS
     2 IF(J.LE.28) KIN(J)=1   
       NDATA=25                                                          
       NVIBH=19                                                          
-      NION=47                                                           
+      NIOND=47                                                         
       NATT=30                                                           
       NEXC1=18
       E(1)=0.0                                                          
@@ -30047,10 +37909,10 @@ C USE LOG INTERPOLATION BECAUSE OF RAPID CHANGE IN X-SEC
 C                                                                       
    30 Q(3,I)=0.0D0                                                      
       IF(EN.LT.E(3)) GO TO 40                                           
-      DO 31 J=2,NION                                                   
+      DO 31 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 32                                        
    31 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                      
    32 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -30466,19 +38328,20 @@ C
       RETURN                                                            
       END
       SUBROUTINE GAS32(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(49),YXSEC(49),XVIB1(31),YVIB1(31),XVIB2(31),        
      /YVIB2(31),XVIB3(18),YVIB3(18),XVIB4(31),YVIB4(31),XVIB5(21),
      /YVIB5(21),XEXC1(17),YEXC1(17),XEXC2(23),YEXC2(23),XEXC3(20),
      /YEXC3(20),XION(46),YION(46),XATT(16),YATT(16)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.01,.014,0.02,0.03,0.04,0.05,0.06,0.07,0.08, 
      /0.09,0.10,0.11,0.12,0.14,0.16,0.18,0.20,0.25,0.30,                
      /0.40,0.50,0.60,0.80,1.00,1.40,2.00,3.00,4.00,5.00,                
@@ -30559,7 +38422,9 @@ C   REF J.CHEM.PHYS. 69(1978) 5532  (ETHENE RESONANCE MOVED TO 2.1 EV)
 C   FIT TO  SCHMIDTS ,GEE+FREEMAN AND BOWMAN+GORDON DATA IN PURE PROPENE
 C   NO GOOD DATA AT HIGH FIELD THEREFORE X-SECTIONS ABOVE 3 EV ARE 
 C   DERIVED FROM SYSTEMATICS IN THE HYDROCARBONS.
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=12
       DO 1 J=1,6
     1 KEL(J)=0
@@ -30574,7 +38439,7 @@ C ---------------------------------------------------------------------
       NEXC1=17                                                          
       NEXC2=23
       NEXC3=20
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=16                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(42.08064*AMU)                                     
@@ -30633,10 +38498,10 @@ C ---------------------------------------------------------------------
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                      
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -30819,19 +38684,20 @@ C
       RETURN                                                            
       END   
       SUBROUTINE GAS33(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(49),YXSEC(49),XVIB1(32),YVIB1(32),XVIB2(31),        
      /YVIB2(31),XVIB3(15),YVIB3(15),XVIB4(28),YVIB4(28),XVIB5(21),
      /YVIB5(21),XEXC1(23),YEXC1(23),XEXC2(20),YEXC2(20),
      /XION(46),YION(46),XATT(16),YATT(16)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.01,.014,0.02,0.03,0.04,0.05,0.06,0.07,0.08, 
      /0.09,0.10,0.11,0.12,0.14,0.16,0.18,0.20,0.25,0.30,                
      /0.40,0.50,0.60,0.80,1.00,1.40,2.00,3.00,4.00,5.00,                
@@ -30906,7 +38772,9 @@ C   FIT TO  SCHMIDTS ,GEE+FREEMAN AND BOWMAN+GORDON DATA IN
 C   PURE CYCLO - PROPANE AND SCHMIDT IN HELIUM/CYCLOPROPANE.
 C   NO GOOD DATA AT HIGH FIELD THEREFORE X-SECTIONS ABOVE 1 EV ARE 
 C   DERIVED FROM SYSTEMATICS IN THE HYDROCARBONS AND ABOVE REFS.
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -30920,7 +38788,7 @@ C ---------------------------------------------------------------------
       NVIB5=21                                                       
       NEXC1=23
       NEXC2=20
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=16                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(42.08064*AMU)                                     
@@ -30971,10 +38839,10 @@ C ---------------------------------------------------------------------
 C                                                                       
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -31130,18 +38998,19 @@ C
       RETURN                                                            
       END   
       SUBROUTINE GAS34(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(24),YXSEC(24),XVIBH(18),YVIBH(18),XION(47),YION(47),
      /XATT(17),YATT(17),XEXC(25),YEXC(25),XEXC1(23),YEXC1(23),
      /XEXC2(19),YEXC2(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,0.01,0.10,0.40,1.00,1.50,2.00,3.00,
      /4.00,5.00,7.50,10.0,12.0,15.0,20.0,30.0,60.0,100.,                
      /200.0,500.0,1000.0,10000.,100000./
@@ -31189,7 +39058,9 @@ C
 C --------------------------------------------------------------------  
 C    X-SECTIONS FROM SCALING ETHANOL X-SECTIONS AND ALSO FROM   
 C    TOTAL ELECTRON SCATTERING FROM GDANSK.
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -31197,7 +39068,7 @@ C ---------------------------------------------------------------------
     2 KIN(J)=0  
       NDATA=24                                                          
       NVIBH=18                                                          
-      NION=47                                                           
+      NIOND=47                                                          
       NATT=17
       NEXC=25                                                           
       NEXC1=23 
@@ -31258,10 +39129,10 @@ C USE LOG INTERPOLATION BECAUSE OF RAPID CHANGE IN X-SEC
 C                                                                       
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 40                                           
-      DO 31 J=2,NION                                                   
+      DO 31 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 32                                        
    31 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
    32 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -31404,18 +39275,19 @@ C
       RETURN                                                            
       END
       SUBROUTINE GAS35(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)      
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)      
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(24),YXSEC(24),XVIBH(18),YVIBH(18),XION(48),YION(48),
      /XATT(17),YATT(17),XEXC(25),YEXC(25),XEXC1(23),YEXC1(23),
      /XEXC2(19),YEXC2(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,0.01,0.10,0.40,1.00,1.50,2.00,3.00,
      /4.00,5.00,7.50,10.0,12.0,15.0,20.0,30.0,60.0,100.,                
      /200.0,500.0,1000.0,10000.,100000./
@@ -31464,7 +39336,9 @@ C --------------------------------------------------------------------
 C   VIBRATION EXCITATION AND IONISATION FROM SCALING PROPANE X-SECTIONS
 C   EXPERIMENTAL DATA FROM CHRISTOPHOROU AND FROMMHOLD ALSO MIXTURE 
 c   DATA WITH ARGON FROM COLLI AND LEONARDIS
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -31472,7 +39346,7 @@ C ---------------------------------------------------------------------
     2 KIN(J)=0          
       NDATA=24                                                          
       NVIBH=18                                                          
-      NION=48                                                           
+      NIOND=48                                                          
       NATT=17
       NEXC=25                                                           
       NEXC1=23 
@@ -31533,10 +39407,10 @@ C USE LOG INTERPOLATION BECAUSE OF RAPID CHANGE IN X-SEC
 C                                                                       
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 40                                           
-      DO 31 J=2,NION                                                   
+      DO 31 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 32                                        
    31 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                    
    32 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -31679,18 +39553,19 @@ C
       RETURN                                                            
       END
       SUBROUTINE GAS36(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)   
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)      
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(24),YXSEC(24),XVIBH(18),YVIBH(18),XION(46),YION(46),
      /XATT(17),YATT(17),XEXC(25),YEXC(25),XEXC1(23),YEXC1(23),
      /XEXC2(19),YEXC2(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,0.01,0.10,0.40,1.00,1.50,2.00,3.00,
      /4.00,5.00,7.50,10.0,12.0,15.0,20.0,30.0,60.0,100.,                
      /200.0,500.0,1000.0,10000.,100000./
@@ -31738,7 +39613,9 @@ C
 C --------------------------------------------------------------------  
 C   X-SECTIONS FROM SCALING ETHANOL X-SECTIONS  AT LOW ENERGY AND 
 C   FITS TO DRIFT VELOCITY OF CHRISTOPHOROU AND CHRISTODOULIDES.   
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -31746,7 +39623,7 @@ C ---------------------------------------------------------------------
     2 KIN(J)=0    
       NDATA=24                                                          
       NVIBH=18                                                          
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=17
       NEXC=25                                                           
       NEXC1=23 
@@ -31807,10 +39684,10 @@ C USE LOG INTERPOLATION BECAUSE OF RAPID CHANGE IN X-SEC
 C                                                                       
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 40                                           
-      DO 31 J=2,NION                                                   
+      DO 31 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 32                                        
    31 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
    32 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -31953,18 +39830,19 @@ C
       RETURN                                                            
       END
       SUBROUTINE GAS37(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT) 
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT) 
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(67),YXSEC(67),XATT(3),YATT(3),XION(27),YION(27),  
      /XEXC1(27),YEXC1(27),XEXC2(25),YEXC2(25),XEXC3(22),YEXC3(22),
      /XEXC4(20),YEXC4(20),XEXC5(18),YEXC5(18)
-      CHARACTER*30 SCRPT(226)        
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)        
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.00005,.0001,.00015,.0002,.0003,.0004,.0005,.0006,
      /.0007,          
      /.0008,.0009,.001,.00125,.0015,.0017,.00185,.002,.0025,.003,       
@@ -32021,14 +39899,15 @@ C  SUM OF HIGHER LEVELS
      /4.49,2.82,2.11,1.67,1.41,.141,.0141,.00141/                       
       NAME=' CESIUM 2001   '                                            
 C --------------------------------------------------------------------- 
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=5
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0    
       NDATA=67                                                          
-      NION=27
+      NIOND=27
       NATT=3                                                            
       NEXC1=27                                                          
       NEXC2=25                                                          
@@ -32070,10 +39949,10 @@ C ---------------------------------------------------------------------
       Q(2,I)=(A*EN+B)*1.D-16
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -32157,19 +40036,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS38(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(29),YXSEC(29),XATT(65),YATT(65),XION(24),YION(24),  
      /XVIB1(55),YVIB1(55),XVIB2(54),YVIB2(54),XVIB3(32),YVIB3(32),      
      /XVIB4(24),YVIB4(24),XEXC1(18),YEXC1(18),XEXC2(17),YEXC2(17),
      /XEXC3(18),YEXC3(18),XEXC4(17),YEXC4(17)         
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,0.01,.028,.109,.282,.471,.681,1.01,1.25,1.45,       
      /1.49,1.53,1.56,1.62,2.16,2.57,3.58,6.19,9.89,16.3,                
      /24.5,39.3,71.0,120.,218.,379.,953.,10000.,100000./                
@@ -32253,14 +40133,16 @@ C  SAVE COMPUTE TIME
       NAME=' F2   MORGAN   '                                            
 C --------------------------------------------------------------------- 
 C    COPIED FROM W.L.MORGAN                              
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+C
+      NION=1 
       NIN=9 
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0    
       NDATA=29                                                          
-      NION=24                                                           
+      NIOND=24                                                          
       NATT=65                                                           
       NVIB1=55                                                          
       NVIB2=54                                                          
@@ -32314,10 +40196,10 @@ C ---------------------------------------------------------------------
       Q(2,I)=(A*EN+B)*1.D-16                                            
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -32451,18 +40333,19 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS39(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)  
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)  
       DIMENSION XEN(30),YXSEC(30),XVIB1(39),YVIB1(39),                  
      /XVIB2(34),YVIB2(34),XEXC(18),YEXC(18),XION(69),YION(69),          
      /XATT(30),YATT(30),XAT1(9),YAT1(9)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME
 C  ELASTIC                                                       
       DATA XEN/0.00,0.01,0.02,0.04,0.07,0.10,0.15,0.20,0.30,0.50,       
      /0.80,1.00,1.20,1.50,1.80,2.20,3.00,3.50,5.00,8.00,  
@@ -32529,6 +40412,7 @@ C  THE 3-BODY X-SECTION  CORRESPONDS TO 40 TORR PRESSURE
 C ---------------------------------------------------------------       
       NAME=' CS2  -2001--- '
 C                      
+      NION=1
       NIN=6
       DO 1 J=1,6 
     1 KEL(J)=0
@@ -32537,7 +40421,7 @@ C
       NDATA=30                                                          
       NVIB1=39                                                          
       NVIB2=34                                                          
-      NION=69                                                           
+      NIOND=69                                                          
       NATT=30 
       NAT1=9
       NEXC=18 
@@ -32580,10 +40464,10 @@ C
       Q(2,I)=(A*EN+B)*1.0D-16
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -32694,19 +40578,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS40(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(34),YXSEC(34),XVIB1(40),YVIB1(40),                  
      /XVIB2(39),YVIB2(39),XVIB3(31),YVIB3(31),      
      /XVIB4(14),YVIB4(14),XVIB5(22),YVIB5(22),XVIB6(22),YVIB6(22),
      /XEXC(17),YEXC(17),XION(70),YION(70),XATT(20),YATT(20)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME
 C  ELASTIC                                                       
       DATA XEN/1.D-6,.001,0.01,0.10,0.15,0.20,0.30,0.40,0.50,0.60,
      /0.70,0.80,1.00,1.20,1.50,1.70,2.00,2.50,3.00,4.00,
@@ -32795,6 +40680,7 @@ C  SIGNIFICANT..
 C ---------------------------------------------------------------       
       NAME=' COS  -2001--- '
 C              
+      NION=1
       NIN=10 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -32807,7 +40693,7 @@ C
       NVIB4=14                                                          
       NVIB5=22
       NVIB6=22
-      NION=70 
+      NIOND=70 
       NATT=20 
       NEXC=17 
       E(1)=0.0                                                          
@@ -32865,10 +40751,10 @@ C USE LOG INTERPOLATION
       Q(2,I)=DEXP((A*DLOG(EN)+B))*1.0D-16
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -33035,19 +40921,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END       
       SUBROUTINE GAS41(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(73),YXSEC(73),XVIB1(24),YVIB1(24),XVIB2(22),YVIB2(22
      /),XION(82),YION(82),XATT(14),YATT(14),XDIS1(32),YDIS1(32),        
      /XDIS2(32),YDIS2(32),XDIS3(32),YDIS3(32),XDIS4(32),YDIS4(32),
      /YELAT(73),XVIB3(19),YVIB3(19),XVIB4(19),YVIB4(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.0001,.001,.004,.007,0.01,.012,.014,.017,0.02,
      /.025,0.03,.035,0.04,0.05,0.06,0.07,0.08,0.09,0.10,               
      /0.12,0.14,0.17,0.20,0.24,0.28,0.32,0.36,0.40,0.45,                
@@ -33160,7 +41047,9 @@ C ---------------------------------------------------------------------
       NAME=' CD4    2004   '
 C      
       AVIB1=0.059 
-      AVIB2=0.050  
+      AVIB2=0.050 
+C
+      NION=1 
       NIN=9 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -33179,7 +41068,7 @@ C
       NVIB2=22
       NVIB3=19
       NVIB4=19                                                          
-      NION=82                                                           
+      NIOND=82                                                         
       NATT=14                                                           
       NDIS1=32                                                          
       NDIS2=32
@@ -33252,10 +41141,10 @@ C
       Q(3,I)=0.0             
       PEQEL(3,I)=0.5                                           
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16
@@ -33414,18 +41303,19 @@ C
       RETURN                                                            
       END    
       SUBROUTINE GAS42(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(62),YXSEC(62),XVIBH(15),YVIBH(15),
      /XVIB1(15),YVIB1(15),XVIB3(15),YVIB3(15),XEXC(34),YEXC(34),      
      /XION(71),YION(71),XATT(33),YATT(33)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
 C
       DATA XEN/0.0,.001,0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,        
      /0.09,0.10,0.12,0.14,0.16,0.18,0.20,0.24,0.30,0.35,
@@ -33497,6 +41387,7 @@ C ----------------------------------------------------------------
 C ---------------------------------------------------------------       
       NAME=' BF3  -2001--- '                                            
 C               
+      NION=1
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -33510,7 +41401,7 @@ C
       NVIB1=15                                                         
       NVIB3=15
       NVIBH=15                                                          
-      NION=71                                                           
+      NIOND=71                                                         
       NATT=33                                                           
       NEXC=34                                                           
       E(1)=0.0                                                          
@@ -33559,10 +41450,10 @@ C
       Q(2,I)=(A*EN+B)*1.0D-16
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                   
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -33698,20 +41589,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS43(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XENM(53),YXMOM(53),XENT(50),YXTOT(50),
      /XVIB2(24),YVIB2(24),XVIB3(24),YVIB3(24),XVIB4(24),YVIB4(24),
      /XVIB5(24),YVIB5(24),XVIB6(24),YVIB6(24),      
      /XDISS(29),YDISS(29),XATT(26),YATT(26),X3ATT(10),Y3ATT(10),
      /XION(50),YION(50)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME     
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME     
 C ELASTIC MOMENTUM TRANSFER (USED LOG INTERPOLATION  IN SUBROUTINE)  
       DATA XENM/1.D-6,0.001,0.01,0.06,0.10,0.30,0.60,1.00,1.40,2.00,
      /3.00,4.00,5.00,6.00,7.00,8.00,9.00,10.0,15.0,20.0,
@@ -33821,6 +41713,7 @@ C    X-SECTIONS NOW MORE ACCURATE THAN LAST DATA SET . NOW 3*
 C --------------------------------------------------------------------       
       NAME=' C2H2F4 2010   '                                            
 C               
+      NION=1
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -33837,7 +41730,7 @@ C
       NDISS=29
       NATT=26
       N3ATT=10
-      NION=50                                                        
+      NIOND=50                                                        
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(102.0308928*AMU)                                
       E(3)=14.48                                                        
@@ -33938,10 +41831,10 @@ C
       Q(3,I)=0.0 
       PEQEL(3,I)=0.5                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -34119,20 +42012,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS44(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(33),YELM(33),YELT(33),XION(42),YION(42),YINC(42),
      /XATT(10),YATT(10),
      /XTORS(32),YTORS(32),XVIB1(25),YVIB1(25),XVIB2(24),YVIB2(24),
      /XVIB3(28),YVIB3(28),XVHAR(15),YVHAR(15),
      /XEXC1(24),YEXC1(24),XEXC2(21),YEXC2(21),XEXC3(20),YEXC3(20)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME  
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME  
 C                                                
       DATA XEN/0.00,.001,0.01,0.10,0.20,0.30,0.40,0.50,0.70,1.00,
      /1.50,2.00,3.00,4.00,5.00,7.00,8.00,10.0,12.0,15.0,
@@ -34234,6 +42128,7 @@ C   BORN BETHE VALUES FOR IONISATION
 C
 C FIX TO ISOTROPIC ANGULAR DISTRIBUTIONS
 C
+      NION=1
       NIN=12
       DO 1 J=1,6
     1 KEL(J)=0        
@@ -34241,7 +42136,7 @@ C
     2 KIN(J)=0 
 C 
       NDATA=33 
-      NION=42
+      NIOND=42
       NATT=10                                                         
       NTORS=32 
       NVIB1=25
@@ -34331,16 +42226,16 @@ C USE LOG INTERPOLATION BECAUSE OF RAPID CHANGE IN X-SEC
 C                                                                       
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 40    
-      IF(EN.GT.XION(NION)) GO TO 33                                   
-      DO 31 J=2,NION                                                   
+      IF(EN.GT.XION(NIOND)) GO TO 33                                   
+      DO 31 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 32                                        
    31 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
    32 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
       GO TO 40
-C USE BORN BETHE X-SECTION ABOVE XION(NION) EV
+C USE BORN BETHE X-SECTION ABOVE XION(NIOND) EV
    33 GAMMA=(EMASS2+2.0D0*EN)/EMASS2
       BETA=DSQRT(1.0D0-1.0D0/(GAMMA*GAMMA)) 
       BETA2=BETA*BETA
@@ -34551,19 +42446,21 @@ C
       RETURN
       END                                                            
       SUBROUTINE GAS45(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0      
       DO 1 J=1,6
     1 KEL(J)=0
@@ -34594,19 +42491,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END   
       SUBROUTINE GAS46(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0       
       DO 1 J=1,6
     1 KEL(J)=0
@@ -34637,19 +42536,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END   
       SUBROUTINE GAS47(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -34680,19 +42581,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END   
       SUBROUTINE GAS48(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)        
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1  
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0 
@@ -34723,19 +42626,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END   
       SUBROUTINE GAS49(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0  
       DO 1 J=1,6
     1 KEL(J)=0
@@ -34766,18 +42671,19 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END   
       SUBROUTINE GAS50(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220) 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250) 
       DIMENSION XEN(32),YXSEC(32),XVIB3(14),YVIB3(14),XVIB4(16),        
      /YVIB4(16),XVIB6(16),YVIB6(16),XEXC(33),YEXC(33),XION(52),YION(52),
      /XATT(13),YATT(13)
-      CHARACTER*15 NAME                            
-      CHARACTER*30 SCRPT(226)                     
+      CHARACTER*25 NAME                            
+      CHARACTER*50 SCRPT(260)                     
       DATA XEN/1.D-6,.001,0.01,0.10,1.00,1.50,2.00,3.00,4.00,5.00,      
      /7.00,9.00,10.0,15.0,20.0,30.0,35.0,50.0,60.0,75.0,
      /100.,150.,200.,300.,500.,700.,1000.,2000.,4000.,10000.,
@@ -34836,6 +42742,7 @@ C ---------------------------------------------------------------
 C      
       NAME=' CHF3 -2001--- '
 C             
+      NION=1
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -34845,7 +42752,7 @@ C
       NVIB3=14                                                          
       NVIB4=16                                                          
       NVIB6=16
-      NION=52                                                           
+      NIOND=52                                                          
       NATT=13 
       NEXC=33                                                           
       E(1)=0.0                                                          
@@ -34901,10 +42808,10 @@ C USE LOG INTERPOLATION
       Q(2,I)=DEXP((A*DLOG(EN)+B))*1.0D-16
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -35026,17 +42933,18 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS51(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220) 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250) 
       DIMENSION XEL(30),YEL(30),XVIBH(16),YVIBH(16),                  
      /XEXC(31),YEXC(31),XION(40),YION(40)
-      CHARACTER*15 NAME                            
-      CHARACTER*30 SCRPT(226)                     
+      CHARACTER*25 NAME                            
+      CHARACTER*50 SCRPT(260)                     
       DATA XEL/1.D-6,.001,0.01,0.10,0.40,0.60,0.80,1.00,1.40,2.00,      
      /3.00,5.00,7.50,10.0,14.0,20.0,30.0,50.0,75.0,100.,
      /150.,200.,400.,700.,1000.,2000.,4000.,10000.,20000.,100000./
@@ -35073,6 +42981,7 @@ C ---------------------------------------------------------------
 C     
       NAME=' CF3BR -2002-- '
 C      
+      NION=1
       NIN=7  
       DO 1 J=1,6
     1 KEL(J)=0
@@ -35080,7 +42989,7 @@ C
     2 KIN(J)=0                                                          
       NEL=30                                                          
       NVIBH=16                                                          
-      NION=40                                                           
+      NIOND=40                                                          
       NEXC=31                                                           
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(148.90991*AMU)                                    
@@ -35131,10 +43040,10 @@ C USE LOG INTERPOLATION
       Q(2,I)=DEXP((A*DLOG(EN)+B))*1.0D-16
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 100                                          
-      DO 40 J=2,NION                                                   
+      DO 40 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 50                                        
    40 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                          
    50 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -35228,19 +43137,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS52(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XENM(56),YXMOM(56),XENT(56),YXTOT(56),
      /XVIB2(22),YVIB2(22),XVIB3(22),YVIB3(22),XVIB4(22),YVIB4(22),
      /XVIB5(22),YVIB5(22),XVIB6(22),YVIB6(22),YATT1(23),      
      /XDISS(27),YDISS(27),XATT(23),YATT(23),XION(50),YION(50)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XENM/0.0,0.001,0.002,0.004,0.007,0.01,.015,0.02,.025,0.03,
      /0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.15,0.20, 
      /0.25,0.30,0.35,0.40,0.45,0.50,0.60,0.70,0.80,0.90, 
@@ -35336,6 +43246,7 @@ C --------------------------------------------------------------------
 C      
       NAME=' C3F8  -2002-- '                                            
 C                   
+      NION=1
       NIN=9  
       DO 1 J=1,6
     1 KEL(J)=0
@@ -35354,7 +43265,7 @@ C
       NVIB6=22
       NDISS=27
       NATT=23
-      NION=50
+      NIOND=50
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(188.0193*AMU)                                     
       E(3)=13.38                                                        
@@ -35413,10 +43324,10 @@ C
 C      
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                          
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -35580,20 +43491,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS53(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)    
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220) 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250) 
       DIMENSION XEN(30),YXSEC(30),XION(104),YION(104),
      /XVIB1(18),YVIB1(18),XVIB2(18),YVIB2(18),XVIB3(16),YVIB3(16),
      /XVIB4(16),YVIB4(16),XVIB5(16),YVIB5(16),
      /XEXC1(15),YEXC1(15),XEXC2(14),YEXC2(14),XEXC3(15),YEXC3(15),
      /XATT(25),YAT1(25),YAT2(25)
-      CHARACTER*15 NAME                            
-      CHARACTER*30 SCRPT(226)                     
+      CHARACTER*25 NAME                            
+      CHARACTER*50 SCRPT(260)                     
       DATA XEN/1.D-6,.001,0.01,0.10,0.20,0.40,0.70,1.00,2.00,3.00,      
      /4.00,5.00,6.00,7.00,8.00,10.0,15.0,20.0,30.0,50.0,
      /100.,200.,300.,600.,1000.,2000.,3000.,6000.,10000.,100000./
@@ -35693,6 +43605,7 @@ C ---------------------------------------------------------------------
 C       
       NAME=' OZONE  2002   '
 C               
+      NION=1
       NIN=11 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -35704,7 +43617,7 @@ C
       NVIB3=16
       NVIB4=16
       NVIB5=16
-      NION=104                                                          
+      NIOND=104                                                         
       NATT=25 
       NEXC1=15
       NEXC2=14
@@ -35766,10 +43679,10 @@ C USE LOG INTERPOLATION
       Q(2,I)=DEXP((A*DLOG(EN)+B))*1.0D-16
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -35934,22 +43847,23 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END 
       SUBROUTINE GAS54(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)   
       COMMON/RATIO/AN1,AN2,AN3,AN4,AN5,AN6,AN,FRAC(6)              
       COMMON/GASN/NGASN(6)                                    
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)   
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)      
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(79),YXSEC(79),XION(52),YION(52)
       DIMENSION XDIM(10),YDIM(10)
       DIMENSION XEXC3(28),YEXC3(28),XEXC4(32),YEXC4(32),XEXC5(20)
       DIMENSION YEXC5(20),XEXC6(24),YEXC6(24),YEXC7(12),XEXC7(12)
       DIMENSION YEXC8(12),XEXC8(12),XEL(57),YEL(57)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
 C   ELASTIC MOMENTUM TRANSFER ENGLAND+ELFORD 1991 (MOD 2003 EL+MC)                     
       DATA XEN/0.00,.005,0.01,.015,0.02,0.03,0.04,0.05,0.06,0.07,
      /0.08,0.09,0.10,0.12,0.13,0.14,0.15,0.16,0.17,0.18,
@@ -36064,7 +43978,8 @@ C  HE-HG MIX     EANDE=0.00067
       EANDE=0.00221     
       DNORM=GFRAC*(573.0/(273.15+TEMPC))*TORR/760.0
       DNORM=DNORM*EANDE 
-C---------------------------------------------------------------    
+C---------------------------------------------------------------  
+      NION=1  
       NIN=8                                       
       DO 1 J=1,6
     1 KEL(J)=0
@@ -36072,7 +43987,7 @@ C---------------------------------------------------------------
     2 KIN(J)=0                          
       NDATA=79
       NEL=57                                                          
-      NION=52
+      NIOND=52
       NDIM=10                                                    
       NEXC3=28
       NEXC4=32
@@ -36157,10 +44072,10 @@ C--------------------------------------------------------------
 C IONISATION                                                                  
       Q(3,I)=0.0                                                        
       IF(EN.LE.E(3)) GO TO 230                                          
-      DO 210 J=2,NION                                                   
+      DO 210 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 220                                       
   210 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   220 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.0D-16                                           
@@ -36273,18 +44188,19 @@ C EXC SUM HIGHER LEVELS
       RETURN                                                            
       END     
       SUBROUTINE GAS55(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY   
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEL(25),YEL(25),XVIB1(16),YVIB1(16),XVIB2(16),YVIB2(16),
      /XVIB3(15),YVIB3(15),XVIB4(15),YVIB4(15),XEXC(18),YEXC(18),
      /XION(66),YION(66),XATT(26),YATT(26)  
-      CHARACTER*30 SCRPT(226)             
-      CHARACTER*15 NAME
+      CHARACTER*50 SCRPT(260)             
+      CHARACTER*25 NAME
 C ELASTIC + EFFECTIVE ROTATION                                                       
       DATA XEL/0.00,.001,0.01,0.10,0.40,0.60,0.80,1.00,1.20,1.50,       
      /1.75,2.00,2.30,3.00,5.00,7.00,10.0,15.0,20.0,30.0, 
@@ -36342,7 +44258,8 @@ C   ELASTIC AND VIBRATION XSECTIONS FROM ELECTRON SCATTERING BY :
 C   GULLEY ET AL AND ROHR . ATTACHMENT FROM AZRIA ET AL. 
 C   IONISATION : BEB X-SECTIONS OF KIM
 C    NB. DT OF MILLICAN AND WALKER AFFECTED BY ATTACHMENT ABOVE 40 TD.
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=9
       DO 1 J=1,6
     1 KEL(J)=0
@@ -36353,7 +44270,7 @@ C ---------------------------------------------------------------------
       NVIB2=16 
       NVIB3=15
       NVIB4=15                                                         
-      NION=66                                                           
+      NIOND=66                                                          
       NATT=26                                                           
       NEXC=18                                                           
       AMP1=0.1875   
@@ -36415,10 +44332,10 @@ C ---------------------------------------------------------------------
 C                                                                       
    30 Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                           
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -36540,19 +44457,20 @@ C
       RETURN                                                            
       END
       SUBROUTINE GAS56(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)  
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)  
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(57),YXSEC(57),XION(46),YION(46),XATT(16),YATT(16),  
      /XVIB1(34),YVIB1(34),XVIB2(28),YVIB2(28),XVIB3(28),YVIB3(28),      
      /XVIB4(25),YVIB4(25),XVIB5(19),YVIB5(19),XEXC1(25),YEXC1(25),
      /XEXC2(23),YEXC2(23),XEXC3(19),YEXC3(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,.002,.004,.007,0.01,.015,0.02,.025,0.03,
      /0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.14,0.17,           
      /0.20,0.25,0.30,0.35,0.40,0.50,0.60,0.80,1.00,1.50,                
@@ -36633,14 +44551,16 @@ C  FROM FLORIANO,GEE AND FREEMAN USED.
 C  ANALYSIS : FIXED INELASTIC X-SECTIONS TO ISOBUTANE VALUES AND VARIED
 C  ELASTIC X-SECTION TO OBTAIN FIT TO DRIFT VELOCITY.
 C  NO USEFUL ELECTRON SCATTERING DATA AVAILABLE.
-C ----------------------------------------------------------------------
+C ---------------------------------------------------------------------
+C
+      NION=1
       NIN=10 
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0                                                          
       NDATA=57                                                          
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=16                                                           
       NVIB1=34
       NVIB2=28                                                          
@@ -36697,10 +44617,10 @@ C ----------------------------------------------------------------------
       Q(2,I)=(A*EN+B)*1.0D-16                                           
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                       
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -36834,19 +44754,20 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS57(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
       DIMENSION XEN(61),YXSEC(61),XION(46),YION(46),XATT(16),YATT(16),  
      /XVIB1(34),YVIB1(34),XVIB2(28),YVIB2(28),XVIB3(28),YVIB3(28),      
      /XVIB4(25),YVIB4(25),XVIB5(19),YVIB5(19),XEXC1(25),YEXC1(25),
      /XEXC2(23),YEXC2(23),XEXC3(19),YEXC3(19)
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XEN/0.00,.001,.002,.003,.004,.005,.007,0.01,.015,0.02,
      /0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.11,0.12,                
      /0.14,0.16,0.18,0.20,0.23,0.26,0.30,0.35,0.40,0.50,           
@@ -36931,14 +44852,16 @@ C FIT TO DRIFT VELOCITY OF FLORIANO GEE AND FREEMAN
 C ----------------------------------------------------------------------  
 C     
       NAME='N-PENTANE   03 '
+C----------------------------------------------------------------------
 C      
+      NION=1
       NIN=11
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0                                                          
       NDATA=61                                                          
-      NION=46                                                           
+      NIOND=46                                                          
       NATT=16                                                           
       NVIB1=34
       NVIB2=28                                                          
@@ -37007,10 +44930,10 @@ C
    21 CONTINUE                                                          
       Q(3,I)=0.0                                                        
       IF(EN.LT.E(3)) GO TO 30                                          
-      DO 22 J=2,NION                                                   
+      DO 22 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 23                                        
    22 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                         
    23 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16                                            
@@ -37164,13 +45087,14 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END                                                               
       SUBROUTINE GAS58(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220),
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250),
      /PJ(120) 
       DIMENSION XMOM(65),YMOM(65),XELA(59),YELA(59),XVIB1(50),YVIB1(50),
      /XVIB2(24),YVIB2(24),XVIB3(20),YVIB3(20),XVIB4(18),YVIB4(18),      
@@ -37179,8 +45103,8 @@ C  SAVE COMPUTE TIME
      /XTRP1(25),YTRP1(25),XTRP3(23),YTRP3(23),XTRP5(26),YTRP5(26),      
      /XTRP7(29),YTRP7(29),XTRP8(19),YTRP8(19),      
      /XSNG2(29),YSNG2(29),XSNG5(26),YSNG5(26),XION(43),YION(43)
-      CHARACTER*30 SCRPT(226)      
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)      
+      CHARACTER*25 NAME                                                 
       DATA XELA/0.00,.010,.015,0.02,0.03,0.04,0.05,0.07,0.10,0.12,    
      /0.15,0.17,0.20,0.25,0.30,0.35,0.40,0.50,0.70,1.00,
      /1.20,1.30,1.50,1.70,1.90,2.10,2.20,2.50,2.80,3.00,
@@ -37309,6 +45233,7 @@ C    COMBINED SOME CLOSE LEVELS IN ORDER TO SAVE COMPUTING TIME
 C    2004: INCLUDED FULL TREATMENT OF ROTATIONAL STATES           
 C    ANISOTROPIC ELASTIC SCATTERING                               
 C    -------------------------------------------------------------- 
+      NION=1
       NIN=71
       DO 1 J=1,6
     1 KEL(J)=0
@@ -37342,7 +45267,7 @@ C ANISOTROPIC INELASTIC FROM COPY (OFFSET) OF ELASTIC ANGULAR DIST
       NTRP8=19                                                          
       NSNG2=29                                                          
       NSNG5=26                                                          
-      NION=43                                                           
+      NIOND=43                                                          
       E(1)=0.0                                                          
       E(2)=2.0*EMASS/(27.7940*AMU)                                      
       E(3)=15.60                                                        
@@ -37499,10 +45424,10 @@ C
       Q(3,I)=0.0                   
       PEQEL(3,I)=0.5                                     
       IF(EN.LT.E(3)) GO TO 50                                           
-      DO 30 J=2,NION                                                    
+      DO 30 J=2,NIOND                                                   
       IF(EN.LE.XION(J)) GO TO 40                                        
    30 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
    40 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16       
@@ -37753,18 +45678,19 @@ C
       RETURN                                                            
       END   
       SUBROUTINE GAS59(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z) 
       IMPLICIT INTEGER*8 (I-N)                                        
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)          
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)    
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)         
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)    
       DIMENSION XELM(69),YELM(69),XVIBR(21),YVIBR(21),
      /XION(106),YION(106),XATT(10),YATT(10),XDIS1(28),YDIS1(28),
      /XEL(11),YEL(11)           
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       DATA XELM/0.00,.001,0.01,.012,.014,.017,0.02,.025,0.03,.035,
      /0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.14,0.17,               
      /0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.60,0.70,0.80,                
@@ -37853,7 +45779,8 @@ C
 C --------------------------------------------------------------------
 C**********************************************************************
       NAME='GERMANE 2005   '
-C**********************************************************************       
+C**********************************************************************
+      NION=1      
       NIN=6 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -37862,7 +45789,7 @@ C**********************************************************************
 C           
       NDATA=69
       NVIBR=21                                                          
-      NION=106                                                          
+      NIOND=106                                                        
       NATT=10                                                           
       NDIS1=28                                                          
       E(1)=0.0                                                          
@@ -37921,10 +45848,10 @@ C
       Q(3,I)=0.0D0           
       PEQEL(3,I)=0.5D0                                         
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                 
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                  
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16
@@ -38048,18 +45975,19 @@ C
       RETURN                                                            
       END    
       SUBROUTINE GAS60(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY  
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)
       IMPLICIT REAL*8 (A-H,O-Z)  
       IMPLICIT INTEGER*8 (I-N)                                       
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)           
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)    
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6) 
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)          
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)    
       DIMENSION XELM(48),YELM(48),XVIBR(21),YVIBR(21),
      /XION(106),YION(106),XATT(10),YATT(10),XDIS1(28),YDIS1(28),
      /XEL(12),YEL(12)           
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
 C ELASTIC MOMENTUM TRANSFER X-SECTION     
       DATA XELM/0.00,.001,.004,0.01,.014,0.02,0.03,0.04,0.05,0.06,
      /0.07,0.08,0.10,0.12,0.14,0.17,0.20,0.30,0.40,0.50,
@@ -38136,7 +46064,8 @@ C      KURACHI AND NAKAMURA     IEEE TRANS PLASMA SCI. 19(1991)262
 C    
 C***********************************************************************
       NAME='SILANE  2005   '
-C***********************************************************************       
+C**********************************************************************
+      NION=1       
       NIN=6 
       DO 1 J=1,6
     1 KEL(J)=0
@@ -38150,7 +46079,7 @@ C
       RAT=1.0 
       NDATA=48
       NVIBR=21                                                          
-      NION=106                                                          
+      NIOND=106                                                         
       NATT=10                                                           
       NDIS1=28                                                          
       E(1)=0.0                                                          
@@ -38209,10 +46138,10 @@ C
       Q(3,I)=0.0D0           
       PEQEL(3,I)=0.5D0                                         
       IF(EN.LT.E(3)) GO TO 200                                          
-      DO 110 J=2,NION                                                   
+      DO 110 J=2,NIOND                                                  
       IF(EN.LE.XION(J)) GO TO 120                                       
   110 CONTINUE                                                          
-      J=NION                                                            
+      J=NIOND                                                 
   120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
       B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
       Q(3,I)=(A*EN+B)*1.D-16
@@ -38351,19 +46280,21 @@ C
       RETURN                                                            
       END    
       SUBROUTINE GAS61(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -38394,19 +46325,21 @@ C  SAVE COMPUTE TIME
       RETURN                                                            
       END   
       SUBROUTINE GAS62(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -38434,22 +46367,24 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS63(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -38477,27 +46412,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN
+      END                                                   
       SUBROUTINE GAS64(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0  
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0         
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38520,27 +46457,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN     
+      END                                              
       SUBROUTINE GAS65(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)     
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0      
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0     
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38563,22 +46502,24 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN  
+      END                                                 
       SUBROUTINE GAS66(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -38606,27 +46547,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN  
+      END                                                 
       SUBROUTINE GAS67(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0       
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0     
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38649,27 +46592,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN  
+      END                                                 
       SUBROUTINE GAS68(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0       
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0    
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38692,27 +46637,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN 
+      END                                                  
       SUBROUTINE GAS69(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0  
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0         
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38735,27 +46682,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS70(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0  
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0         
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38778,27 +46727,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS71(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0      
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0     
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38821,27 +46772,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN         
+      END                                          
       SUBROUTINE GAS72(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0       
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0    
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -38864,22 +46817,24 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN         
+      END                                          
       SUBROUTINE GAS73(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -38907,25 +46862,27 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS74(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
-    1 KEL(J)=0 
+    1 KEL(J)=0
       DO 2 J=1,NIN
     2 KIN(J)=0           
       E(1)=0.0                                                          
@@ -38950,23 +46907,25 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS75(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0  
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
@@ -38993,22 +46952,24 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS76(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -39036,27 +46997,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS77(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0      
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0      
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -39079,22 +47042,24 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS78(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -39122,22 +47087,24 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
+      RETURN          
+      END                                         
       SUBROUTINE GAS79(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
+C ---------------------------------------------------------------------
+      NION=1 
       NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
@@ -39165,27 +47132,29 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN                                                            
-      END   
-      SUBROUTINE GAS80(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
-     /,PEQEL,PEQIN,PENFRA,KEL,KIN,SCRPT)   
+      RETURN          
+      END                                         
+      SUBROUTINE GAS81(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY 
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)   
       IMPLICIT REAL*8 (A-H,O-Z)
       IMPLICIT INTEGER*8 (I-N)                                         
       COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
       COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
-      DIMENSION PEQEL(6,4000),PEQIN(220,4000),KIN(220),KEL(6)         
-      DIMENSION Q(6,4000),QIN(220,4000),E(6),EIN(220),PENFRA(3,220)   
-      CHARACTER*30 SCRPT(226)
-      CHARACTER*15 NAME                                                 
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      CHARACTER*50 SCRPT(260)
+      CHARACTER*25 NAME                                                 
       NAME=' DUMMY         '     
 C --------------------------------------------------------------------- 
 C   DUMMY ROUTINE                       
-C --------------------------------------------------------------------- 
-      NIN=0  
+C ---------------------------------------------------------------------
+      NION=1 
+      NIN=0
       DO 1 J=1,6
     1 KEL(J)=0
       DO 2 J=1,NIN
-    2 KIN(J)=0         
+    2 KIN(J)=0           
       E(1)=0.0                                                          
       E(2)=0.0                                                          
       E(3)=0.0                                                          
@@ -39208,5 +47177,1725 @@ C ---------------------------------------------------------------------
       Q(1,I)=Q(2,I)+Q(3,I)+Q(4,I)  
   900 CONTINUE                                                          
 C  SAVE COMPUTE TIME
-      RETURN    
+      RETURN          
+      END            
+      SUBROUTINE GAS80(Q,QIN,NIN,E,EIN,NAME,VIRIAL,EOBY
+     /,PEQEL,PEQIN,PENFRA,KEL,KIN,QION,PEQION,EION,NION,SCRPT)    
+      IMPLICIT REAL*8 (A-H,O-Z)
+      IMPLICIT INTEGER*8 (I-N)                                         
+      COMMON/CNSTS/ECHARG,EMASS,AMU,PIR2                                
+      COMMON/INPT/NGAS,NSTEP,NANISO,EFINAL,ESTEP,AKT,ARY,TEMPC,TORR,IPEN
+      DIMENSION PEQEL(6,4000),PEQIN(250,4000),KIN(250),KEL(6)  
+      DIMENSION QION(8,4000),PEQION(8,4000),EION(8)       
+      DIMENSION Q(6,4000),QIN(250,4000),E(6),EIN(250),PENFRA(3,250)   
+      DIMENSION XELM(142),YELM(142),YELT(142),YEPS(142),
+     /XROT0(53),YROT0(53),XROT1(43),YROT1(43),XROT2(28),YROT2(28),
+     /XROT3(28),YROT3(28),XVIB1(43),YVIB1(43),XVIB2(42),YVIB2(42),
+     /XVIB3(13),YVIB3(13),XVIB4(12),YVIB4(12),
+     /XB3S1(3),YB3S1(3),XB3S2(6),YB3S2(6),XB3S3(5),YB3S3(5),
+     /XB3S4(8),YB3S4(8),XC3PI(5),YC3PI(5),XA3SG(5),YA3SG(5),
+     /XE3SG(5),YE3SG(5),XEFSG(34),YEFSG(34),
+     /XEXC1(20),YEXC1(20),XEXC2(23),YEXC2(23),
+     /XATT(18),YATT(18),XION(92),YION(92),IOFFN(106),PJ(7),ERLVL(7),
+     /BEF(10)
+      CHARACTER*50 SCRPT(260)                                       
+      CHARACTER*25 NAME 
+C --------------------------------------------------------------      
+C ELASTIC MT                                                   
+      DATA XELM/0.00,.001,.0012,.0015,.0018,.002,.0025,.003,.004,.005,
+     /.006,.007,.008,.009,.010,.012,.015,.018,.020,.025,
+     /0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10,0.12,0.15,  
+     /0.18,0.20,0.25,0.30,0.40,0.50,0.60,0.70,0.80,0.90,
+     /1.00,1.20,1.50,1.80,2.00,2.50,3.00,4.00,5.00,6.00,
+     /7.00,8.00,9.00,10.0,12.0,15.0,18.0,20.0,25.0,30.0,
+     /40.0,50.0,60.0,70.0,80.0,90.0,100.,125.,150.,175.,
+     /200.,250.,300.,350.,400.,450.,500.,600.,700.,800.,
+     /900.,1000.,1250.,1500.,1750.,2000.,2500.,3000.,3500.,4000.,
+     /4500.,5000.,6000.,7000.,8000.,9000.,1.0D4,1.25D4,1.5D4,1.75D4,
+     /2.0D4,2.5D4,3.0D4,3.5D4,4.0D4,4.5D4,5.0D4,6.0D4,7.0D4,8.0D4,
+     /9.0D4,1.0D5,1.25D5,1.5D5,1.75D5,2.0D5,2.5D5,3.0D5,3.5D5,4.0D5,
+     /4.5D5,5.0D5,6.0D5,7.0D5,8.0D5,9.0D5,1.0D6,1.25D6,1.5D6,1.75D6,
+     /2.0D6,2.5D6,3.0D6,3.5D6,4.0D6,4.5D6,5.0D6,6.0D6,7.0D6,8.0D6,
+     /9.0D6,1.0D7/  
+      DATA YELM/7.24,7.25,7.26,7.26,7.27,7.28,7.30,7.35,7.38,7.45,
+     /7.48,7.54,7.59,7.64,7.70,7.78,7.90,8.04,8.14,8.33,
+     /8.56,8.93,9.27,9.54,9.79,10.04,10.25,10.47,10.86,11.35,
+     /11.78,12.02,12.54,13.00,13.81,14.52,15.16,15.66,16.17,16.58,
+     /17.01,17.70,18.05,18.05,17.70,16.60,15.35,12.85,10.90,9.450,
+     /8.20,7.20,6.30,5.60,4.45,3.275,2.529,2.154,1.476,1.100,
+     /.702,.505,.375,.295,.238,.195,.170,.116,.0868,.0662,
+     /.0524,.0353,.0256,.0195,.0154,.0125,.0103,.00747,.00567,.00446,
+     /.00361,.00299,.0020,.00144,.00109,8.53D-4,5.69D-4,4.08D-4,3.08D-4,
+     /2.41D-4,
+     /1.94D-4,1.60D-4,1.15D-4,8.65D-5,6.77D-5,5.45D-5,4.49D-5,2.98D-5,
+     /2.13D-5,1.60D-5,
+     /1.26D-5,8.34D-6,5.97D-6,4.51D-6,3.54D-6,2.86D-6,2.36D-6,1.70D-6,
+     /1.29D-6,1.02D-6,
+     /8.26D-7,6.86D-7,4.65D-7,3.40D-7,2.62D-7,2.09D-7,1.44D-7,1.07D-7,
+     /8.37D-8,6.76D-8,
+     /5.62D-8,4.76D-8,3.58D-8,2.82D-8,2.30D-8,1.92D-8,1.63D-8,1.15D-8,
+     /8.67D-9,6.80D-9,
+     /5.49D-9,3.83D-9,2.84D-9,2.20D-9,1.76D-9,1.44D-9,1.20D-9,8.79D-10,
+     /6.72D-10,5.31D-10,
+     /4.31D-10,3.57D-10/
+      DATA YEPS/0.0,0.0,0.0,0.0,0.0,0.0,0.0,-.00204,-.00406,-.00403,
+     /-.00402,-.00799,-.01195,-.01587,-.01974,-.02548,-.03497,-.04613,
+     /-.05537,-.07162,
+     /-.09485,-.11355,-.13538,-.15360,-.16779,-.18516,-.19550,-.20711,
+     /-.22691,-.25186,
+     /-.27686,-.29241,-.29958,-.33194,-.36128,-.39254,-.42965,-.43614,
+     /-.42939,-.42749,
+     /-.44093,-.43942,-.39970,-.34691,-.29121,-.15375,-.03498,0.18393,
+     /0.31707,0.40003,
+     /0.46174,0.51567,0.56204,0.58937,0.63888,0.68310,0.71518,0.73895,
+     /0.79352,0.81348,
+     /0.85049,0.86411,0.88575,0.89777,0.90257,0.91825,0.91958,0.93123,
+     /0.93873,0.94796,
+     /0.95404,0.96326,0.97004,0.97305,0.97513,0.97827,0.98027,0.98267,
+     /0.98464,0.98629,
+     /.987605,.988622,.990817,.992168,.993473,.994052,.995228,.995858,
+     /.996455,.996914,
+     /.987258,.997548,.997951,.998252,.998475,.998649,.998785,.9990334,
+     /.9992007,.9993190,
+     /.9994023,.9995276,.9996104,.9996674,.9997107,.9997456,.9997718,
+     /.9998134,.9998419,.9998630,
+     /.9998801,.9998934,.9999171,.9999328,.9999437,.9999520,.9999635,
+     /.9999709,.9999760,.9999798,
+     /.9999827,.9999850,.9999883,.9999906,.9999922,.9999934,.9999944,
+     /.9999960,.9999970,.9999977,
+     /.9999981,.9999987,.9999990,.9999993,.9999994,.9999995,.9999996,
+     /.9999997,.9999998,.9999998,
+     /.9999999,.9999999/
+C ELASTIC FROM 100 EV
+      DATA YELT/7.24,7.25,7.26,7.26,7.27,7.28,7.30,7.36,7.40,7.43,
+     /7.46,7.50,7.53,7.56,7.60,7.65,7.72,7.80,7.85,7.95,
+     /8.05,8.30,8.50,8.65,8.80,8.93,9.06,9.19,9.42,9.70,
+     /9.92,10.03,10.42,10.60,11.07,11.43,11.68,12.02,12.46,12.79,
+     /13.02,13.56,14.15,14.59,14.78,15.05,15.00,14.66,13.90,13.05,
+     /12.10,11.33,10.54,9.744,8.375,6.678,5.508,4.952,3.931,3.125,
+     /2.299,1.760,1.465,1.241,1.034,0.954,0.841,0.639,0.518,0.443,
+     /.383,.303,.255,.210,.176,.158,.140,.112,.0932,.0800,
+     /.070,.062,.049,.040,.035,.0295,.0235,.0189,.0162,.0142,
+     /.0126,.0114,.00951,.00817,.00717,.00639,.00576,.00464,.00390,
+     /.00336,
+     /.00296,.00240,.00203,.00176,.00156,.00141,.00128,.00110,
+     /9.66D-4,8.67D-4,
+     /7.90D-4,7.28D-4,6.17D-4,5.44D-4,4.91D-4,4.52D-4,3.98D-4,3.63D-4,
+     /3.38D-4,3.19D-4,
+     /3.05D-4,2.94D-4,2.77D-4,2.66D-4,2.58D-4,2.52D-4,2.47D-4,2.39D-4,
+     /2.34D-4,2.31D-4,
+     /2.28D-4,2.25D-4,2.23D-4,2.22D-4,2.22D-4,2.21D-4,2.21D-4,2.20D-4,
+     /2.20D-4,2.20D-4,
+     /2.19D-4,2.19D-4/      
+C-----------------------------------------------------------------------
+C ROTATION J=0-2
+C SCALED BY 1/E ABOVE 20 EV IN SUBROUTINE                    
+      DATA XROT0/.043928,.046,.047,.048,.049,.050,.051,.054,.055,.060, 
+     /.065,.070,.080,.090,0.10,0.11,0.12,0.13,0.14,0.15,
+     /0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.65, 
+     /0.70,0.80,0.90,1.00,1.10,1.20,1.35,1.50,1.75,2.00,
+     /2.50,3.00,3.50,4.00,4.50,5.00,6.00,7.00,8.00,9.00,                
+     /10.0,15.0,20.0/                                                   
+      DATA YROT0/0.00,.0206,.0276,.0286,.0297,.0308,.0310,.0330,.0340,
+     /.0394, 
+     /.0452,.0507,.0614,.0680,.0740,.0790,.0835,.088,.0925,.0970,
+     /.115,.132,.152,.175,.200,.228,.260,.291,.323,.359, 
+     /.394,.469,.555,.636,.716,.796,.916,1.036,1.203,1.370,
+     /1.585,1.704,1.755,1.758,1.732,1.689,1.579,1.462,1.350,1.248,      
+     /1.156,0.730,0.47/                                            
+C-----------------------------------------------------------------------
+C ROTATION J=1-3                                                        
+C SCALED BY 1/E ABOVE 20 EV IN SUBROUTINE                    
+      DATA XROT1/0.072741,.075,.080,.085,.090,.095,0.10,0.11,0.12,0.13,
+     /0.15,0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.56,0.60,                
+     /0.66,0.70,0.80,0.90,1.01,1.20,1.40,1.60,1.80,2.00,                
+     /2.50,3.00,3.50,4.00,4.50,5.00,6.00,7.00,8.00,9.00,                
+     /10.0,15.0,20.0/             
+      DATA YROT1/0.00,.0085,.0149,.0203,.0238,.0266,.0282,.0351,.0403,  
+     /.0449,
+     /.0520,.0604,.0719,.0870,.1029,.1191,.1361,.1543,.1773,.1944,
+     /.2212,.2396,.2839,.3328,.3842,.489,.569,.658,.743,.818,           
+     /.952,1.020,1.046,1.050,1.036,1.011,.946,.876,.809,.748,           
+     /.694,.440,.288/                                                
+C-----------------------------------------------------------------------
+C ROTATION J=2-4                                         
+C SCALED BY 1/E ABOVE 20 EV IN SUBROUTINE                    
+      DATA XROT2/0.10085,0.15,0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.60, 
+     /0.70,0.80,0.90,1.00,1.50,2.00,2.50,3.00,3.50,4.00,                
+     /4.50,5.00,5.50,6.00,7.00,8.00,10.0,20.0/  
+      DATA YROT2/0.00,.0249,.0367,.0475,.0577,.0694,.0834,.1003,.1192,  
+     /.145,
+     /.178,.216,.256,.299,.436,.543,.600,.649,.670,.672,           
+     /.662,.646,.627,.605,.561,.517,.444,0.20/
+C ROTATION J=4-6 USE X-SECTION FOR J=2-4 SCALED BY 0.8
+C ROTATION J=6-8 USE X-SECTION FOR J=2-4 SCALED BY 0.5               
+C-----------------------------------------------------------------------
+C ROTATION J=3-5                              
+C SCALED BY 1/E ABOVE 20 EV IN SUBROUTINE                    
+      DATA XROT3/0.12797,0.15,0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.60,
+     /0.70,0.80,0.90,1.00,1.50,2.00,2.50,3.00,3.50,4.00,                
+     /4.50,5.00,5.50,6.00,7.00,8.00,10.0,20.0/
+      DATA YROT3/0.00,.019,.033,.043,.050,.058,.066,.075,.085,.104,     
+     /.128,.154,.185,.214,.334,.565,.700,.750,.825,.828,                
+     /.818,.797,.774,.747,.692,.640,.548,0.24/
+C ROTATION J=5-7 USE X-SECTION FOR J=3-5 SCALED BY 0.8
+C ROTATION J=7-9 USE X-SECTION FOR J=3-5 SCALED BY 0.5           
+C-----------------------------------------------------------------------
+C VIBRATION V=0-1 DELTAJ=0  ROTATIONALLY ELASTIC  
+C SCALE AS 1/E ABOVE 100 EV                      
+      DATA XVIB1/.515916,0.56,0.58,0.60,0.65,0.75,0.85,0.95,1.00,1.05, 
+     /1.10,1.15,1.20,1.30,1.40,1.60,1.80,2.20,2.40,2.60,                
+     /3.00,3.50,4.00,4.50,5.00,6.00,7.00,8.00,9.00,10.0,                
+     /11.0,12.0,13.0,14.0,15.0,20.0,25.0,30.0,40.0,50.0,
+     /60.0,80.0,100./          
+      DATA YVIB1/0.00,.0005,.0031,.0064,.0071,.0106,.0170,.0279,.0342,  
+     /.0399,
+     /.0451,.0501,.0545,.0651,.0735,.0964,.1216,.1624,.1677,.1719,
+     /.1916,.2008,.1860,.1630,.1460,.1160,.0876,.0655,.0510,.0430,
+     /.0366,.0318,.0280,.0241,.0222,.0143,.0104,.0073,.0048,.00416,
+     /.00351,.00262,.00194/
+C-----------------------------------------------------------------------
+C VIBRATION V=0-1 DELTAJ=2  ROTATIONALLY INELASTIC 
+C SCALE AS 1/E ABOVE 100 EV                     
+      DATA XVIB2/.568,.575,0.60,0.65,0.75,0.85,0.95,1.00,1.05,1.10,
+     /1.15,1.20,1.30,1.40,1.60,1.80,2.20,2.40,2.60,3.00,                
+     /3.50,4.00,4.50,5.00,6.00,7.00,8.00,9.00,10.0,11.0,                
+     /12.0,13.0,14.0,15.0,20.0,25.0,30.0,40.0,50.0,60.0,
+     /80.0,100./               
+      DATA YVIB2/0.00,.0002,.0016,.0028,.0058,.0110,.0204,.0264,.0316,
+     /.0369,
+     /.0423,.0477,.0602,.0697,.0994,.1334,.1910,.2008,.2141,.2494,
+     /.2672,.2540,.2270,.2040,.1640,.1224,.0905,.0690,.0570,.0484,      
+     /.0422,.0370,.0319,.0294,.0189,.0138,.0097,.0064,.00552,.00466,
+     /.00347,.00257/      
+C-----------------------------------------------------------------------
+C  VIBRATION V=0-2                                                      
+      DATA XVIB3/1.00265,1.40,1.50,2.00,2.50,3.00,4.00,5.00,6.00,8.00,
+     /10.0,15.0,20.0/                             
+      DATA YVIB3/0.00,.001,.002,.011,.025,.033,.035,.032,.027,.021,
+     /.016,.0092,.0066/                        
+C-----------------------------------------------------------------------
+C  VIBRATION V=0-3                                                      
+      DATA XVIB4/1.46083,1.80,2.00,2.50,3.00,4.00,5.00,6.00,8.00,
+     /10.0,15.0,20.0/                                   
+      DATA YVIB4/.0,.0003,.001,.0025,.0033,.0035,.0032,.0027,.0021,
+     /.0016,.00092,.00066/     
+C B3 SIGMA+ 100% DISSOCIATIVE SPLIT INTO 4 ENERGY LOSSES
+C SCALED BY1/E**3 ABOVE 50.0EV
+      DATA XB3S1/8.00,9.20,9.20001/
+      DATA YB3S1/0.00,.109,0.00/  
+      DATA XB3S2/9.00,9.20,9.20001,10.2,12.2,12.20001/
+      DATA YB3S2/0.00,0.00,.109,.187,.445,0.00/  
+      DATA XB3S3/9.50,12.2,12.20001,15.2,15.20001/
+      DATA YB3S3/0.00,0.00,.445,0.63,0.00/  
+      DATA XB3S4/10.0,15.2,15.20001,17.2,20.2,30.0,40.0,50.0/
+      DATA YB3S4/0.00,0.00,0.63,.516,.353,.153,.069,.035/
+C C3 PI V=0-18 SUMMED VIBRATIONS METASTABLE LEVEL 
+C SCALED BY 1/E**3 ABOVE 30 EV
+      DATA XC3PI/11.779,15.0,17.5,20.0,30.0/
+      DATA YC3PI/0.00,0.09,.126,.135,.072/
+C A3 SIGMA V=0-17 SUMMED VIBRATIONS
+C SCALED BY 1/E**3 ABOVE 30 EV
+      DATA XA3SG/11.793,15.0,17.5,20.0,30.0/
+      DATA YA3SG/0.00,.072,.081,0.09,.027/
+C E3 SIGMA V=0-10 SUMMED VIBRATIONS
+C SCALED BY 1/E**3 ABOVE 30 EV
+      DATA XE3SG/13.253,15.0,17.5,20.0,30.0/
+      DATA YE3SG/0.00,.0108,.018,.0225,.0117/
+C EF1 SIGMA V=0-19 SUMMED VIBRATIONS
+C  BORN SCALED ABOVE XEFSG(NEFSG)  EV
+      DATA XEFSG/12.301,15.0,16.0,17.0,17.5,19.0,20.0,21.0,23.5,26.0,
+     /30.0,40.0,50.0,60.0,70.0,80.0,100.,120.,140.,160.,
+     /180.,200.,220.,240.,260.,280.,300.,400.,500.,600.,
+     /700.,800.,900.,1000./
+      DATA YEFSG/0.00,.028,.033,.037,.038,.039,.040,.040,.040,.040,
+     /.040,.041,.041,.039,.036,.034,.029,.026,.024,.022,
+     /.021,.020,.019,.018,.017,.016,.015,.012,.0096,.0080,
+     /.0069,.0061,.0054,.0049/
+C B1 SIGMA                  OSCILLATOR SUM V=0-36   F=0.310770
+C C1 PI                     OSCILLATOR SUM V=0-13   F=0.355995
+C B!1 SIGMA                 OSCILLATOR SUM V=0-8    F=0.044610
+C D1 PI                     OSCILLATOR SUM V=0-15   F=0.074070
+C B!!1 SIGMA                OSCILLATOR SUM V=0-6    F=0.022300
+C D!1 PI                    OSCILLATOR SUM V=0-3    F=0.014500
+C B!!!1 SIGMA + D!!1 PI     OSCILLATOR SUM          F=0.014500
+C B!!!!1 SIGMA + D!!!1 PI   OSCILLATOR SUM          F=0.010100
+C B!!!!!1 SIGMA + D!!!!1 PI OSCILLATOR SUM          F=0.005000
+C CONTINUUM EXCITATION                              F=0.026800
+C PREDISSOCIATION                                   F=0.017000
+C
+C                 SUM EXCITATION OSCILLATOR         F=0.895645
+C                 SUM IONISATION OSCILLATOR         F=1.1219
+C           TOTAL OSCILLATOR SUM           F=2.017545
+C-----------------------------------------------------------------------
+C  ATTACHMENT GIVEN AS TABLES AND AS A TEMPERATURE DEPENDENT FUNCTION
+C
+C TABLES FOR 2SIGMAg  ATTACHMENT 
+      DATA XATT/7.00,7.50,8.00,8.50,9.00,9.50,10.0,10.4,11.0,11.5,
+     /12.0,12.5,13.0,13.5,14.0,14.5,15.0,15.5/
+      DATA YATT/0.00,2.8D-6,1.18D-5,3.08D-5,5.88D-5,1.01D-4,1.18D-4,
+     /1.29D-4,1.18D-4,1.01D-4,
+     /7.28D-5,4.48D-5,2.66D-5,1.26D-5,6.72D-6,3.20D-6,8.0D-7,0.0/
+C SEE NOTES ON DERIVATION OF IONISATION X-SECTION                     
+      DATA XION/15.418,16.0,16.5,17.0,17.5,18.0,18.5,19.0,19.5,20.0,    
+     /20.5,21.0,21.5,22.0,22.5,23.0,23.5,24.0,24.5,25.0,                
+     /25.5,26.0,28.0,30.0,32.0,34.0,36.0,38.0,40.0,45.0,                
+     /50.0,55.0,60.0,65.0,70.0,75.0,80.0,85.0,90.0,95.0,                
+     /100.,105.,110.,115.,120.,125.,130.,135.,140.,145.,                
+     /150.,160.,180.,200.,225.,250.,275.,300.,350.,400.,
+     /450.,500.,550.,600.,650.,700.,750.,800.,850.,900.,
+     /950.,1000.,1200.,1400.,1600.,1800.,2000.,2500.,3000.,3500.,
+     /4000.,4500.,5000.,5500.,6000.,7000.,8000.,9000.,10000.,12000.,
+     /14000.,16000./                
+      DATA YION/0.00,.0295,.0598,.0910,.121,.154,.184,.217,.245,.276,   
+     /.305,.331,.357,.384,.407,.433,.454,.477,.498,.516,                
+     /.536,.555,.623,.678,.725,.765,.800,.828,.853,.900,                
+     /.927,.945,.954,.957,.957,.956,.950,.944,.934,.920,                
+     /.910,.902,.890,.878,.865,.851,.840,.832,.818,.809,                
+     /.801,.776,.725,.687,.645,.605,.565,.537,.484,.443,
+     /.404,.379,.343,.322,.307,.287,.276,.261,.251,.239,
+     /.226,.214,.199,.165,.146,.133,.121,.101,.0865,.0754,
+     /.0675,.0610,.0558,.0515,.0480,.0422,.0375,.0340,.0310,.0265,
+     /.0234,.0208/   
+C***********************************************************************
+C IONISATION FROM WEIGHTED AVERAGE OF RAPP AND STRAUB UP TO 180EV
+C  NORMALISED STRAUB BETWEEN 180 AND 1000EV THEN NORMALISED SCHRAM
+C  BETWEEN 1 AND 16KEV.
+C  ABOVE 16KEV USED BORN-BETHE WITH M2=0.642 AND C=8.3 CLOSE FIT TO 
+C  RIEKE AND PREPEJCHAL  AND CONSISTENT WITH BERKOWITZ
+C USE ORTHO IONISATION ENERGY AT ROOM TEMPERATURE
+C DISSOCIATION ENERGY D0=4.47806952 EV
+C ORTHO PARA ENERGY DIFFERENCE J=0 - J=1 FOR GROUND STATE =0.01469049 EV
+C
+C OSCILLATOR STRENGTHS FROM BERKOWITZ WITH SMALL CORRECTIONS FOR NEW
+C IMPROVED FRANCK-CONDON FACTORS FOR LYMAN (B1 SIGMA) AND WERNER (C1 PI)
+C TRIPLET X-SECTIONS FROM PUBLISHED ELECTRON SCATTERING UP TO 2010.
+C LOWEST TRIPLET DISSOCIATIVE STATE (B3 SIGMA) SPLIT INTO FOUR LEVELS IN
+C ORDER TO BETTER SIMULATE VARYING ENERGY LOSS.
+C TRIPLET X-SECTIONS SCALED BY 0.9 TO BETTER FIT TOWNSEND COEFICIENT. 
+C TRIPLET SCALING FACTOR WITHIN EXPERIMENTAL MEASUREMENT ERRORS. 
+C ATTACHMENT X-SECTION INCLUDES TEMPERATURE DEPENDENCE FROM ROTATIONAL 
+C POPULATION SHOULD BE ACCURATE UP TO 1000 KELVIN.
+C MOMENTUM TRANSFER ELASTIC X-SECTION FROM SCHMIDT UP TO 1.0 EV , ABOVE
+C 1.0 EV X-SECTION FROM FIT TO DRIFT VELOCITY.
+C FIT TO WITHIN EXPERIMENTAL ERRORS OF DRIFT VELOCITY AND DIFFUSION FROM
+C TABLE 14.6 OF HUXLEY AND CROMPTON.
+C SOME EVIDENCE OF ELECTRON RUNAWAY ABOVE 300 TOWNSEND FROM CALCULATION.
+C-----------------------------------------------------------------------
+      IF(NANISO.EQ.0) THEN
+       NAME='H2PARA ISO 2010' 
+      ELSE
+       NAME='H2PARA ANI 2010'
+      ENDIF
+C ----------------------------------------------------------------------
+C                                      
+      CONST=1.873884D-20  
+      EMASS2=1021997.804
+      API=DACOS(-1.0D0)
+      A0=0.52917720859D-8
+      RY=13.60569193
+      BBCONST=16.0*API*A0*A0*RY*RY/EMASS2
+C BORN-BETHE CONSTANTS FOR IONISATION
+      AM2=0.642
+      C=8.30
+C-----------------------------------------------------------------------
+      NION=1  
+      NIN=106 
+      DO 1 J=1,6
+    1 KEL(J)=NANISO
+      DO 2 J=13,NIN
+    2 KIN(J)=NANISO
+C SET VIBRATION AND ROTATION TO ISOTROPIC
+      DO 22 J=1,12
+   22 KIN(J)=0
+      NELM=142                                                         
+      NROT0=53                                                          
+      NROT1=43                                                          
+      NROT2=28                                                          
+      NROT3=28                                                          
+      NVIB1=43                                                          
+      NVIB2=42                                                          
+      NVIB3=13                                                          
+      NVIB4=12 
+      NB3S1=3
+      NB3S2=6
+      NB3S3=5
+      NB3S4=8
+      NC3PI=5
+      NA3SG=5
+      NE3SG=5
+      NEFSG=34                                                         
+      NIOND=92                                                         
+      NATT=18                                                           
+      E(1)=0.0                                                          
+      E(2)=2.0*EMASS/(2.015650*AMU)   
+C IONISATION ENERGY FOR PARA =15.42580155 EV
+C IONISATION ENERGY FOR ORTHO=15.41833111 EV
+C USE ORTHO ENERGY FOR ROOM TEMPERATURE GAS
+      E(3)=15.418 
+C EXCITATION X-SECTION AT 1.3 MEV                                                      
+      E(4)=0.2228D-18             
+C IONISING X-SECTION AT 1.3 MEV                           
+      E(5)=0.1889D-18    
+C EOBY FOR MINIMUM IONISING PARTICLES                                 
+      E(6)=6.5 
+C
+      EOBY=12.0
+      IOFF=IFIX(SNGL(0.5+E(3)/ESTEP))
+      EIN(1)=-.043928
+      EIN(2)=-.072741
+      EIN(3)=-.10085
+      EIN(4)=-.12797
+      EIN(5)=0.043928                                                   
+      EIN(6)=0.072741                                                  
+      EIN(7)=0.10085                                                    
+      EIN(8)=0.12797                                                 
+      EIN(9)=0.515916                                                   
+      EIN(10)=0.568                                                     
+      EIN(11)=1.00265                                                   
+      EIN(12)=1.46083 
+C b3 SIGMA+ DISSOCIATION SPLIT INTO 4 ENERGY LOSSES
+      EIN(13)=8.0  
+      EIN(14)=9.0 
+      EIN(15)=9.5 
+      EIN(16)=10.0
+C B1 SIGMA+ LYMAN BANDS
+      EIN(17)=11.189
+      EIN(18)=11.353
+      EIN(19)=11.512
+      EIN(20)=11.666
+      EIN(21)=11.817
+      EIN(22)=11.963
+      EIN(23)=12.105
+      EIN(24)=12.244
+      EIN(25)=12.378
+      EIN(26)=12.509
+      EIN(27)=12.636
+      EIN(28)=12.759
+      EIN(29)=12.878
+      EIN(30)=12.994
+      EIN(31)=13.106
+      EIN(32)=13.215
+      EIN(33)=13.320
+      EIN(34)=13.422
+      EIN(35)=13.521
+      EIN(36)=13.617
+      EIN(37)=13.709
+      EIN(38)=13.798
+      EIN(39)=13.884
+      EIN(40)=13.967
+      EIN(41)=14.047
+      EIN(42)=14.124
+      EIN(43)=14.197
+      EIN(44)=14.268
+      EIN(45)=14.335
+      EIN(46)=14.399
+      EIN(47)=14.458
+      EIN(48)=14.514
+      EIN(49)=14.564
+      EIN(50)=14.608
+      EIN(51)=14.644
+      EIN(52)=14.668
+      EIN(53)=14.678
+C C1 PI WERNER BANDS
+      EIN(54)=12.285
+      EIN(55)=12.571
+      EIN(56)=12.840
+      EIN(57)=13.094
+      EIN(58)=13.332
+      EIN(59)=13.553
+      EIN(60)=13.758
+      EIN(61)=13.947
+      EIN(62)=14.119
+      EIN(63)=14.273
+      EIN(64)=14.408
+      EIN(65)=14.522
+      EIN(66)=14.611
+      EIN(67)=14.672
+C C3 PI 
+      EIN(68)=11.779
+      EIN(69)=13.100
+C A3 SIGMA
+      EIN(70)=11.793
+      EIN(71)=12.684
+      EIN(72)=13.253
+C E3 SIGMA
+      EIN(73)=12.301
+C EF SIGMA
+      EIN(74)=12.841   
+C B!1 SIGMA BANDS
+      EIN(75)=13.698
+      EIN(76)=13.931
+      EIN(77)=14.144
+      EIN(78)=14.333
+      EIN(79)=14.494
+      EIN(80)=14.613
+      EIN(81)=14.651
+      EIN(82)=14.664
+      EIN(83)=14.672 
+C D1 PI BANDS
+      EIN(84)=13.994
+      EIN(85)=14.270
+      EIN(86)=14.530
+      EIN(87)=14.775
+      EIN(88)=15.003
+      EIN(89)=15.218
+      EIN(90)=15.418
+      EIN(91)=15.602
+      EIN(92)=15.772
+      EIN(93)=15.928
+      EIN(94)=16.068
+      EIN(95)=16.191
+      EIN(96)=16.299
+      EIN(97)=16.390
+      EIN(98)=16.462
+      EIN(99)=16.516 
+C B!!1 SIGMA
+      EIN(100)=14.491
+C D!1 PI 
+      EIN(101)=14.609 
+C B!!!1 SIGMA  + D!!1 PI
+      EIN(102)=14.899   
+C B!!!!1 SIGMA + D!!!1 PI
+      EIN(103)=15.060
+C B!!!!!1 SIGAM + D!!!!1 PI
+      EIN(104)=15.150
+C CONTINUUM DISSOCIATIVE EXC 
+      EIN(105)=15.300
+C PREDISSOCIATION ABOVE IONISATION POTENTIAL
+      EIN(106)=15.800
+C BEF SCALING :  BINDING ENERGIES
+      BEF(1)=E(3)
+      BEF(2)=E(3)
+      BEF(3)=E(3)
+      BEF(4)=E(3)
+      BEF(5)=E(3)
+C 
+C ATTACHMENT THRESHOLD EV FOR 2 SIGMAu
+      EATTTH=3.723
+C ATTACHMENT WIDTH FOR 2 SIGMAu
+      EATTWD=0.45
+C ATTACHMENT AMPLITUDE FOR 2 SIGMAu
+      AMPATT=3.0D-21
+C ATTACHMENT THRESHOLD EV FOR 2 SIGMAg
+      EATTTH1=13.922
+C ATTACHMENT WIDTH FOR 2 SIGMAg
+      EATTWD1=0.95
+C ATTACHMENT AMPLITUDE FOR 2 SIGMAg
+      AMPATT1=3.0D-20
+C-----------------------------------------------------------------------
+C ROTATIONAL ENERGY LEVELS: ERLVL(N)
+C  PARA - ORTHO ENERGY DIFFERENCE ( J=0 - J=1 ROT LEVEL) = 0.01469049 EV
+C  REF :ASTROPHYS J.  282(1984)L85
+      ERLVL(1)=0.01469049
+      ERLVL(2)=EIN(5)
+      ERLVL(3)=0.01469049+EIN(6)
+      ERLVL(4)=EIN(5)+EIN(7)
+      ERLVL(5)=0.01469049+EIN(6)+EIN(8)
+      ERLVL(6)=EIN(5)+EIN(7)+0.15381
+      ERLVL(7)=0.01469049+EIN(6)+EIN(8)+0.1794
+C**********************************************************************
+C ENTER PENNING TRANSFER FRACTION FOR EACH LEVEL
+C USE TRANSFER FRACTION IN RANGE BETWEEN 0.0 AND 0.2 FOR MOST MIXTURES
+      DO 50 NL=1,NIN
+      PENFRA(1,NL)=0.0
+C PENNING TRANSFER DISTANCE MICRONS
+      PENFRA(2,NL)=1.0
+C PENNING TRANSFER TIME PICOSECONDS
+   50 PENFRA(3,NL)=1.0
+C**********************************************************************
+      IF(IPEN.EQ.0) GO TO 4 
+      DO 3 KDUM=1,NIN
+      IF(PENFRA(1,KDUM).EQ.0.0) GO TO 3
+      WRITE(6,999) NAME,EIN(KDUM),PENFRA(1,KDUM),PENFRA(2,KDUM),
+     /PENFRA(3,KDUM)
+  999 FORMAT(' GAS = ',A15,' ENERGY LEVEL = ',F7.4,' EV.',/,' PENNING PR
+     /OBABILITY =',F5.3,' ABS.LENGTH =',F7.2,' DECAY TIME =',F7.1,/)    
+    3 CONTINUE
+C
+    4 DO 5 NL=1,NIN
+    5 IOFFN(NL)=IFIX(SNGL(0.5+EIN(NL)/ESTEP))
+C
+C ROTATIONAL POPULATIONS
+      DO 6 K=1,7,2
+C   6 PJ(K)=3*(2*K+1)*DEXP(-ERLVL(K)/AKT)
+    6 PJ(K)=0.0D0
+      DO 7 K=2,6,2
+    7 PJ(K)=(2*K+1)*DEXP(-ERLVL(K)/AKT)
+      SUM=1.0
+      DO 8 K=1,7
+    8 SUM=SUM+PJ(K)        
+      FROT0=1.0/SUM                                                     
+      FROT1=PJ(1)/SUM                                                   
+      FROT2=PJ(2)/SUM                                                   
+      FROT3=PJ(3)/SUM                                                   
+      FROT4=PJ(4)/SUM                                                   
+      FROT5=PJ(5)/SUM 
+      FROT6=PJ(6)/SUM
+      FROT7=PJ(7)/SUM 
+C     WRITE(6,88) FROT0,FROT1,FROT2,FROT3,FROT4,FROT5,FROT6,FROT7
+C  88 FORMAT(3X,' FROT0=',F9.6,' FROT1=',F9.6,' FROT2=',F9.6,' FROT3=',
+C    /F9.6,' FROT4=',F9.6,' FROT5=',F9.6,' FROT6=',F9.6,' FROT7=',F9.6) 
+C-----------------------------------------------------------------------        
+C
+      SCRPT(1)='                              '
+      SCRPT(2)=' ELASTIC (ANISO)  P-HYDROGEN  '
+      IF(NANISO.EQ.0) THEN
+      SCRPT(2)=' ELASTIC (ISOT)   P-HYDROGEN  '
+      ENDIF
+      SCRPT(3)=' IONISATION    ELOSS= 15.418  '
+      SCRPT(4)=' ATTACHMENT                   '
+      SCRPT(5)='                              '
+      SCRPT(6)='                              '
+      SCRPT(7)=' ROT 2-0       ELOSS=-0.043928'
+      SCRPT(8)=' ROT 3-1       ELOSS=-0.072741'
+      SCRPT(9)=' ROT 4-2       ELOSS=-0.10085 '
+      SCRPT(10)=' ROT 5-3       ELOSS=-0.12797 '
+      SCRPT(11)=' ROT 0-2       ELOSS= 0.043928'
+      SCRPT(12)=' ROT 1-3       ELOSS= 0.072741'
+      SCRPT(13)=' ROT 2-4+46+68 ELOSS= 0.10085 '
+      SCRPT(14)=' ROT 3-5+57+79 ELOSS= 0.12797 ' 
+      SCRPT(15)=' VIB V1 DJ=0   ELOSS= 0.515916'
+      SCRPT(16)=' VIB V1 DJ=2   ELOSS= 0.568   '
+      SCRPT(17)=' VIB 2V1       ELOSS= 1.00265 '
+      SCRPT(18)=' VIB 3V1       ELOSS= 1.46083 '
+      SCRPT(19)=' B3 SIG       DIS ELOSS= 8.00 '
+      SCRPT(20)=' B3 SIG       DIS ELOSS= 9.00 '
+      SCRPT(21)=' B3 SIG       DIS ELOSS= 9.50 '
+      SCRPT(22)=' B3 SIG       DIS ELOSS=10.00 '
+      SCRPT(23)=' B1SIG V=0    LY  ELOSS=11.189'
+      SCRPT(24)=' B1SIG V=1    LY  ELOSS=11.353'
+      SCRPT(25)=' B1SIG V=2    LY  ELOSS=11.512'
+      SCRPT(26)=' B1SIG V=3    LY  ELOSS=11.666'
+      SCRPT(27)=' B1SIG V=4    LY  ELOSS=11.817'
+      SCRPT(28)=' B1SIG V=5    LY  ELOSS=11.963'
+      SCRPT(29)=' B1SIG V=6    LY  ELOSS=12.105'
+      SCRPT(30)=' B1SIG V=7    LY  ELOSS=12.244'
+      SCRPT(31)=' B1SIG V=8    LY  ELOSS=12.378'
+      SCRPT(32)=' B1SIG V=9    LY  ELOSS=12.509'
+      SCRPT(33)=' B1SIG V=10   LY  ELOSS=12.636'
+      SCRPT(34)=' B1SIG V=11   LY  ELOSS=12.759'
+      SCRPT(35)=' B1SIG V=12   LY  ELOSS=12.878'
+      SCRPT(36)=' B1SIG V=13   LY  ELOSS=12.994'
+      SCRPT(37)=' B1SIG V=14   LY  ELOSS=13.106'
+      SCRPT(38)=' B1SIG V=15   LY  ELOSS=13.216'
+      SCRPT(39)=' B1SIG V=16   LY  ELOSS=13.320'
+      SCRPT(40)=' B1SIG V=17   LY  ELOSS=13.422'
+      SCRPT(41)=' B1SIG V=18   LY  ELOSS=13.521'
+      SCRPT(42)=' B1SIG V=19   LY  ELOSS=13.617'
+      SCRPT(43)=' B1SIG V=20   LY  ELOSS=13.709'
+      SCRPT(44)=' B1SIG V=21   LY  ELOSS=13.798'
+      SCRPT(45)=' B1SIG V=22   LY  ELOSS=13.884'
+      SCRPT(46)=' B1SIG V=23   LY  ELOSS=13.967'
+      SCRPT(47)=' B1SIG V=24   LY  ELOSS=14.047'
+      SCRPT(48)=' B1SIG V=25   LY  ELOSS=14.124'
+      SCRPT(49)=' B1SIG V=26   LY  ELOSS=14.197'
+      SCRPT(50)=' B1SIG V=27   LY  ELOSS=14.268'
+      SCRPT(51)=' B1SIG V=28   LY  ELOSS=14.335'
+      SCRPT(52)=' B1SIG V=29   LY  ELOSS=14.399'
+      SCRPT(53)=' B1SIG V=30   LY  ELOSS=14.458'
+      SCRPT(54)=' B1SIG V=31   LY  ELOSS=14.514'
+      SCRPT(55)=' B1SIG V=32   LY  ELOSS=14.564'
+      SCRPT(56)=' B1SIG V=33   LY  ELOSS=14.608'
+      SCRPT(57)=' B1SIG V=34   LY  ELOSS=14.644'
+      SCRPT(58)=' B1SIG V=35   LY  ELOSS=14.668'
+      SCRPT(59)=' B1SIG V=36   LY  ELOSS=14.678'
+      SCRPT(60)=' C1 PI V=0    WR  ELOSS=12.285'
+      SCRPT(61)=' C1 PI V=1    WR  ELOSS=12.571'
+      SCRPT(62)=' C1 PI V=2    WR  ELOSS=12.840'
+      SCRPT(63)=' C1 PI V=3    WR  ELOSS=13.094'
+      SCRPT(64)=' C1 PI V=4    WR  ELOSS=13.332'
+      SCRPT(65)=' C1 PI V=5    WR  ELOSS=13.553'
+      SCRPT(66)=' C1 PI V=6    WR  ELOSS=13.758'
+      SCRPT(67)=' C1 PI V=7    WR  ELOSS=13.947'
+      SCRPT(68)=' C1 PI V=8    WR  ELOSS=14.119'
+      SCRPT(69)=' C1 PI V=9    WR  ELOSS=14.273'
+      SCRPT(70)=' C1 PI V=10   WR  ELOSS=14.408'
+      SCRPT(71)=' C1 PI V=11   WR  ELOSS=14.522'
+      SCRPT(72)=' C1 PI V=12   WR  ELOSS=14.611'
+      SCRPT(73)=' C1 PI V=13   WR  ELOSS=14.672'
+      SCRPT(74)=' C3 PI V=0-4  DIS ELOSS=11.779'
+      SCRPT(75)=' C3 PI V=5-18 DIS ELOSS=13.100'
+      SCRPT(76)=' A3SIG V=0-3  DIS ELOSS=11.793'
+      SCRPT(77)=' A3SIG V=3-17 DIS ELOSS=12.684'
+      SCRPT(78)=' E3SIG V=0-9  DIS ELOSS=13.253'
+      SCRPT(79)=' EF1SIG V=0-5     ELOSS=12.301'
+      SCRPT(80)=' EF1SIG V=6-19    ELOSS=12.841'
+      SCRPT(81)=' B!1SIG V=0       ELOSS=13.698'
+      SCRPT(82)=' B!1SIG V=1       ELOSS=13.931'
+      SCRPT(83)=' B!1SIG V=2       ELOSS=14.144'
+      SCRPT(84)=' B!1SIG V=3       ELOSS=14.333'
+      SCRPT(85)=' B!1SIG V=4       ELOSS=14.494'
+      SCRPT(86)=' B!1SIG V=5       ELOSS=14.613'
+      SCRPT(87)=' B!1SIG V=6       ELOSS=14.651'
+      SCRPT(88)=' B!1SIG V=7       ELOSS=14.664'
+      SCRPT(89)=' B!1SIG V=8       ELOSS=14.672'
+      SCRPT(90)=' D1 PI  V=0       ELOSS=13.994'
+      SCRPT(91)=' D1 PI  V=1       ELOSS=14.270'
+      SCRPT(92)=' D1 PI  V=2       ELOSS=14.530'
+      SCRPT(93)=' D1 PI  V=3   DIS ELOSS=14.775'
+      SCRPT(94)=' D1 PI  V=4   DIS ELOSS=15.003'
+      SCRPT(95)=' D1 PI  V=5   DIS ELOSS=15.218'
+      SCRPT(96)=' D1 PI  V=6   DIS ELOSS=15.418'
+      SCRPT(97)=' D1 PI  V=7   DIS ELOSS=15.602'
+      SCRPT(98)=' D1 PI  V=8   DIS ELOSS=15.772'
+      SCRPT(99)=' D1 PI  V=9   DIS ELOSS=15.928'
+      SCRPT(100)=' D1 PI  V=10  DIS ELOSS=16.068'
+      SCRPT(101)=' D1 PI  V=11  DIS ELOSS=16.191'
+      SCRPT(102)=' D1 PI  V=12  DIS ELOSS=16.299'
+      SCRPT(103)=' D1 PI  V=13  DIS ELOSS=16.390'
+      SCRPT(104)=' D1 PI  V=14  DIS ELOSS=16.462'
+      SCRPT(105)=' D1 PI  V=15  DIS ELOSS=16.516'
+      SCRPT(106)=' B!!SIG V=0-6 DIS ELOSS=14.491'
+      SCRPT(107)=' D!1 PI V=0-3 DIS ELOSS=14.609'
+      SCRPT(108)=' 5P SIG 6P PI DIS ELOSS=14.899'
+      SCRPT(109)=' 6P SIG 6P PI DIS ELOSS=15.060'
+      SCRPT(110)=' 7P SIG 7P PI DIS ELOSS=15.150'
+      SCRPT(111)=' CONTINUUM EX DIS EL0SS=15.300'
+      SCRPT(112)=' PREDISS >IP  DIS ELOSS=15.800'
+C 
+c*****************************                    
+       EN=-ESTEP/2.0           
+C**************************                           
+      DO 900 I=1,NSTEP                                               
+      EN=EN+ESTEP   
+      IF(EN.GT.EIN(1)) THEN
+       GAMMA1=(EMASS2+2.0D0*EN)/EMASS2
+       GAMMA2=GAMMA1*GAMMA1
+       BETA=DSQRT(1.0D0-1.0D0/GAMMA2)
+       BETA2=BETA*BETA
+      ENDIF 
+C                                                                     
+      DO 60 J=2,NELM                                                   
+      IF(EN.LE.XELM(J)) GO TO 70                                       
+   60 CONTINUE                                                          
+      J=NELM 
+C ELASTIC MOMENTUM TRANSFER                                                          
+   70 A=(YELM(J)-YELM(J-1))/(XELM(J)-XELM(J-1))                         
+      B=(XELM(J-1)*YELM(J)-XELM(J)*YELM(J-1))/(XELM(J-1)-XELM(J))      
+      QMOM=(A*EN+B)*1.0D-16   
+C ELASTIC X-SECTION  
+      A=(YELT(J)-YELT(J-1))/(XELM(J)-XELM(J-1))                         
+      B=(XELM(J-1)*YELT(J)-XELM(J)*YELT(J-1))/(XELM(J-1)-XELM(J))      
+      QELA=(A*EN+B)*1.0D-16
+C ANGULAR DISTRIBUTION FACTOR ( OKRIMOVSKKY)
+      A=(YEPS(J)-YEPS(J-1))/(XELM(J)-XELM(J-1))                         
+      B=(XELM(J-1)*YEPS(J)-XELM(J)*YEPS(J-1))/(XELM(J-1)-XELM(J))      
+      PQ2=A*EN+B             
+      PQ1=0.5+(QELA-QMOM)/QELA
+      IF(NANISO.EQ.0) PEQEL(2,I)=0.5
+      IF(NANISO.EQ.1) PEQEL(2,I)=PQ1
+      IF(NANISO.EQ.2) PEQEL(2,I)=PQ2
+      Q(2,I)=QELA
+      IF(NANISO.EQ.0) Q(2,I)=QMOM                                   
+C GROSS IONISATION                                                      
+      Q(3,I)=0.0  
+      PEQEL(3,I)=0.5D0
+      IF(NANISO.EQ.2) PEQEL(3,I)=0.0D0
+      IF(EN.LT.E(3)) GO TO 200    
+      IF(EN.GT.XION(NIOND)) GO TO 121                                  
+      DO 110 J=2,NIOND                                                  
+      IF(EN.LE.XION(J)) GO TO 120                                       
+  110 CONTINUE                                                          
+      J=NIOND                                                  
+  120 A=(YION(J)-YION(J-1))/(XION(J)-XION(J-1))                         
+      B=(XION(J-1)*YION(J)-XION(J)*YION(J-1))/(XION(J-1)-XION(J))       
+      Q(3,I)=(A*EN+B)*1.D-16                    
+      GO TO 122
+C USE BORN-BETHE X-SECTION ABOVE XION(NIOND) EV
+  121 X2=1.0D0/BETA2
+      X1=X2*DLOG(BETA2/(1.0D0-BETA2))-1.0D0
+      Q(3,I)=CONST*(AM2*X1+C*X2)
+  122 CONTINUE
+C USE ANISOTROPIC SCATTERING FOR PRIMARY IONISATION ELECTRON FOR
+C ENERGIES ABOVE 2 * IONISATION ENERGY
+C ANISOTROPIC ANGULAR DISTRIBUTION SAME AS ELASTIC AT ENERGY OFFSET BY
+C IONISATION ENERGY
+      IF(EN.LE.(2.0*E(3))) GO TO 200
+      PEQEL(3,I)=PEQEL(2,(I-IOFF))                       
+C ATTCHMENT                                                            
+  200 Q(4,I)=0.0
+      PEQEL(4,I)=0.5
+      IF(NANISO.EQ.2) PEQEL(4,I)=0.0
+C ROTATIONAL DEPENDANCE OF ATTACHMENT TO 2 SIGMAu
+      IF(EN.LT.(EATTTH-ERLVL(7))) GO TO 300
+      Q(4,I)=AMPATT*5.00*FROT7*DEXP(-(EN-EATTTH+ERLVL(7))/EATTWD)
+      IF(EN.LT.(EATTTH-ERLVL(6))) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*3.96*FROT6*DEXP(-(EN-EATTTH+ERLVL(6))/EATTWD)
+      IF(EN.LT.(EATTTH-ERLVL(5))) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*3.15*FROT5*DEXP(-(EN-EATTTH+ERLVL(5))/EATTWD)
+      IF(EN.LT.(EATTTH-ERLVL(4))) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*2.50*FROT4*DEXP(-(EN-EATTTH+ERLVL(4))/EATTWD)
+      IF(EN.LT.(EATTTH-ERLVL(3))) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*1.99*FROT3*DEXP(-(EN-EATTTH+ERLVL(3))/EATTWD)
+      IF(EN.LT.(EATTTH-ERLVL(2))) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*1.58*FROT2*DEXP(-(EN-EATTTH+ERLVL(2))/EATTWD)
+      IF(EN.LT.(EATTTH-ERLVL(1))) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*1.26*FROT1*DEXP(-(EN-EATTTH+ERLVL(1))/EATTWD)
+      IF(EN.LT.EATTTH) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT*FROT0*DEXP(-(EN-EATTTH)/EATTWD)
+      IF(EN.LT.XATT(1)) GO TO 300
+C ATTACHMENT TO 2 SIGMAg   
+      IF(EN.GT.XATT(NATT)) GO TO 250                                    
+      DO 210 J=2,NATT                                                   
+      IF(EN.LE.XATT(J)) GO TO 220  
+  210 CONTINUE                                                          
+      J=NATT                                                            
+  220 A=(YATT(J)-YATT(J-1))/(XATT(J)-XATT(J-1))                         
+      B=(XATT(J-1)*YATT(J)-XATT(J)*YATT(J-1))/(XATT(J-1)-XATT(J))       
+      Q(4,I)=Q(4,I)+(A*EN+B)*1.D-16                 
+C HIGH ENERGY ATTACHMENT TO 2 SIGMAg
+C 250 CONTINUE  
+  250 IF(EN.LE.EATTTH1) GO TO 300
+      Q(4,I)=Q(4,I)+AMPATT1*DEXP(-(EN-EATTTH1)/EATTWD1)
+C COUNTING IONISATION ( SET EQUAL TO GROSS IONISATION)                  
+  300 Q(5,I)=Q(3,I)               
+      PEQEL(5,I)=PEQEL(3,I)                                  
+      Q(6,I)=0.0 
+C
+      DO 1005 NL=1,NIN
+      QIN(NL,I)=0.0D0
+      PEQIN(NL,I)=0.5D0
+      IF(NANISO.EQ.2) THEN
+       PEQIN(NL,I)=0.0D0  
+      ENDIF
+ 1005 CONTINUE                                                     
+C--------------------------------------------------------------------- 
+C                    SUPERELASTIC 2-0
+      IF(EN.LE.0.0) GO TO 1100
+      IF(EN.GT.XROT0(NROT0)) GO TO 1100
+      DO 1010 J=2,NROT0
+      IF((EN+EIN(5)).LE.XROT0(J)) GO TO 1020
+ 1010 CONTINUE
+      J=NROT0
+ 1020 A=(YROT0(J)-YROT0(J-1))/(XROT0(J)-XROT0(J-1))                     
+      B=(XROT0(J-1)*YROT0(J)-XROT0(J)*YROT0(J-1))/(XROT0(J-1)-XROT0(J))
+      QIN(1,I)=FROT2*0.2*(EN+EIN(5))*(A*(EN+EIN(5))+B)*1.D-16/EN 
+C                    SUPERELASTIC 3-1
+ 1100 IF(EN.LE.0.0) GO TO 1200 
+      IF(EN.GT.XROT1(NROT1)) GO TO 1200
+      DO 1110 J=2,NROT1
+      IF((EN+EIN(6)).LE.XROT1(J)) GO TO 1120
+ 1110 CONTINUE
+      J=NROT1
+ 1120 A=(YROT1(J)-YROT1(J-1))/(XROT1(J)-XROT1(J-1))                     
+      B=(XROT1(J-1)*YROT1(J)-XROT1(J)*YROT1(J-1))/(XROT1(J-1)-XROT1(J)) 
+      QIN(2,I)=FROT3*(3.0/7.0)*(EN+EIN(6))*(A*(EN+EIN(6))+B)*1.D-16/EN 
+C                    SUPERELASTIC 4-2
+ 1200 IF(EN.LE.0.0) GO TO 1250
+      IF(EN.GT.XROT2(NROT2)) GO TO 1250
+      DO 1210 J=2,NROT2
+      IF((EN+EIN(7)).LE.XROT2(J)) GO TO 1220
+ 1210 CONTINUE
+      J=NROT2
+ 1220 A=(YROT2(J)-YROT2(J-1))/(XROT2(J)-XROT2(J-1))                     
+      B=(XROT2(J-1)*YROT2(J)-XROT2(J)*YROT2(J-1))/(XROT2(J-1)-XROT2(J))
+      QIN(3,I)=FROT4*(5.0/9.0)*(EN+EIN(7))*(A*(EN+EIN(7))+B)*1.D-16/EN 
+C                    SUPERELASTIC 5-3 
+ 1250 IF(EN.LE.0.0) GO TO 1290
+      IF(EN.GT.XROT3(NROT3)) GO TO 1290
+      DO 1260 J=2,NROT3
+      IF((EN+EIN(8)).LE.XROT3(J)) GO TO 1270
+ 1260 CONTINUE
+      J=NROT3
+ 1270 A=(YROT3(J)-YROT3(J-1))/(XROT3(J)-XROT3(J-1))                     
+      B=(XROT3(J-1)*YROT3(J)-XROT3(J)*YROT3(J-1))/(XROT3(J-1)-XROT3(J))
+      QIN(4,I)=FROT5*(7.0/11.)*(EN+EIN(8))*(A*(EN+EIN(8))+B)*1.D-16/EN 
+C                      ROTATION 0-2 
+ 1290 IF(EN.LE.EIN(5)) GO TO 1400
+      IF(EN.GT.XROT0(NROT0)) GO TO 1330                         
+      DO 1310 J=2,NROT0                                                 
+      IF(EN.LE.XROT0(J)) GO TO 1320                                     
+ 1310 CONTINUE                                                          
+      J=NROT0                                                           
+ 1320 A=(YROT0(J)-YROT0(J-1))/(XROT0(J)-XROT0(J-1))                     
+      B=(XROT0(J-1)*YROT0(J)-XROT0(J)*YROT0(J-1))/(XROT0(J-1)-XROT0(J)) 
+      QIN(5,I)=(A*EN+B)*1.D-16*FROT0        
+      GO TO 2330 
+ 1330 QIN(5,I)=YROT0(NROT0)*1.D-16*FROT0*XROT0(NROT0)/EN  
+ 2330 IF(EN.LE.(2.0*EIN(5))) GO TO 1400
+      PEQIN(5,I)=PEQEL(2,(I-IOFFN(5)))
+C                        ROTATION 1-3                                   
+ 1400 IF(EN.LE.EIN(6)) GO TO 1401
+      IF(EN.GT.XROT1(NROT1)) GO TO 1331                     
+      DO 1311 J=2,NROT1                                                 
+      IF(EN.LE.XROT1(J)) GO TO 1321                                     
+ 1311 CONTINUE                                                          
+      J=NROT1                                                           
+ 1321 A=(YROT1(J)-YROT1(J-1))/(XROT1(J)-XROT1(J-1))                     
+      B=(XROT1(J-1)*YROT1(J)-XROT1(J)*YROT1(J-1))/(XROT1(J-1)-XROT1(J)) 
+      QIN(6,I)=(A*EN+B)*1.D-16*FROT1           
+      GO TO 2331
+ 1331 QIN(6,I)=YROT1(NROT1)*1.D-16*FROT1*XROT1(NROT1)/EN         
+ 2331 IF(EN.LE.(2.0*EIN(6))) GO TO 1401
+      PEQIN(6,I)=PEQEL(2,(I-IOFFN(6)))
+C                      ROTATION 2-4 + 4-6 + 6-8
+C USED SCALED 2-4 XSECTION FOR 4-6 AND 6-8 
+c ALSO SCALED FOR ENERGY LOSS BY 1.5 FOR 4-6 AND BY 2.0 FOR 6-8                              
+ 1401 IF(EN.LE.EIN(7)) GO TO 1402
+      IF(EN.GT.XROT2(NROT2)) GO TO 1332                               
+      DO 1312 J=2,NROT2                                                 
+      IF(EN.LE.XROT2(J)) GO TO 1322                                     
+ 1312 CONTINUE                                                          
+      J=NROT2                                                           
+ 1322 A=(YROT2(J)-YROT2(J-1))/(XROT2(J)-XROT2(J-1))                     
+      B=(XROT2(J-1)*YROT2(J)-XROT2(J)*YROT2(J-1))/(XROT2(J-1)-XROT2(J)) 
+      QIN(7,I)=(A*EN+B)*1.D-16*(FROT2+FROT4*0.8*1.5+FROT6*0.5*2.0)    
+      GO TO 2332
+ 1332 QIN(7,I)=YROT2(NROT2)*1.D-16*(FROT2+FROT4*0.8*1.5+FROT6*0.5*2.0)
+      QIN(7,I)=QIN(7,I)*XROT2(NROT2)/EN   
+ 2332 IF(EN.LE.(2.0*EIN(7))) GO TO 1402
+      PEQIN(7,I)=PEQEL(2,(I-IOFFN(7)))
+C                        ROTATION 3-5 + 5-7 + 7-9
+C USED SCALED 3-5 XSECTION FOR 5-7 AND 7-9 
+C ALSO SCALED FOR ENERGY LOSS BY 1.4 FOR 5-7 AND 1.8 FOR 7-9     
+ 1402 IF(EN.LE.EIN(8)) GO TO 1403 
+      IF(EN.GT.XROT3(NROT3)) GO TO 1333                        
+      DO 1313 J=2,NROT3                                                 
+      IF(EN.LE.XROT3(J)) GO TO 1323                                     
+ 1313 CONTINUE                                                          
+      J=NROT3                                                           
+ 1323 A=(YROT3(J)-YROT3(J-1))/(XROT3(J)-XROT3(J-1))                     
+      B=(XROT3(J-1)*YROT3(J)-XROT3(J)*YROT3(J-1))/(XROT3(J-1)-XROT3(J)) 
+      QIN(8,I)=(A*EN+B)*1.D-16*(FROT3+FROT5*0.8*1.4+FROT7*0.5*1.8)   
+      GO TO 2333
+ 1333 QIN(8,I)=YROT3(NROT3)*1.D-16*(FROT3+FROT5*0.8*1.4+FROT7*0.5*1.8)
+      QIN(8,I)=QIN(8,I)*XROT3(NROT3)/EN
+ 2333 IF(EN.LE.(2.0*EIN(8))) GO TO 1403
+      PEQIN(8,I)=PEQEL(2,(I-IOFFN(8)))
+C-----------------------------------------------------------------------
+C VIBRATION  V1   WITH DJ=0
+ 1403 IF(EN.LE.EIN(9)) GO TO 304  
+      IF(EN.GT.XVIB1(NVIB1)) GO TO 303                         
+      DO 301 J=2,NVIB1                                                  
+      IF(EN.LE.XVIB1(J)) GO TO 302                                      
+  301 CONTINUE                                                          
+      J=NVIB1                                                           
+  302 A=(YVIB1(J)-YVIB1(J-1))/(XVIB1(J)-XVIB1(J-1))                     
+      B=(XVIB1(J-1)*YVIB1(J)-XVIB1(J)*YVIB1(J-1))/(XVIB1(J-1)-XVIB1(J)) 
+      QIN(9,I)=(A*EN+B)*1.D-16        
+      GO TO 1303
+  303 QIN(9,I)=YVIB1(NVIB1)*1.D-16*XVIB1(NVIB1)/EN
+ 1303 IF(EN.LE.(2.0*EIN(9))) GO TO 304 
+      PEQIN(9,I)=PEQEL(2,(I-IOFFN(9)))
+C                      
+C  VIBRATION  V1   WITH DJ=2                                               
+  304 IF(EN.LE.EIN(10)) GO TO 308    
+      IF(EN.GT.XVIB2(NVIB2)) GO TO 307                               
+      DO 305 J=2,NVIB2                                                  
+      IF(EN.LE.XVIB2(J)) GO TO 306                                      
+  305 CONTINUE                                                          
+      J=NVIB2                                                           
+  306 A=(YVIB2(J)-YVIB2(J-1))/(XVIB2(J)-XVIB2(J-1))                     
+      B=(XVIB2(J-1)*YVIB2(J)-XVIB2(J)*YVIB2(J-1))/(XVIB2(J-1)-XVIB2(J)) 
+      QIN(10,I)=(A*EN+B)*1.D-16               
+      GO TO 1307
+  307 QIN(10,I)=YVIB2(NVIB2)*1.D-16*XVIB2(NVIB2)/EN   
+ 1307 IF(EN.LE.(2.0*EIN(10))) GO TO 308 
+      PEQIN(10,I)=PEQEL(2,(I-IOFFN(10)))
+C            
+C VIBRATION V2                                                         
+  308 IF(EN.LE.EIN(11)) GO TO 312 
+      IF(EN.GT.XVIB3(NVIB3)) GO TO 311                       
+      DO 309 J=2,NVIB3                                                  
+      IF(EN.LE.XVIB3(J)) GO TO 310                                      
+  309 CONTINUE                                                          
+      J=NVIB3                                                           
+  310 A=(YVIB3(J)-YVIB3(J-1))/(XVIB3(J)-XVIB3(J-1))                     
+      B=(XVIB3(J-1)*YVIB3(J)-XVIB3(J)*YVIB3(J-1))/(XVIB3(J-1)-XVIB3(J)) 
+      QIN(11,I)=(A*EN+B)*1.D-16
+      GO TO 2311
+  311 QIN(11,I)=YVIB3(NVIB3)*1.D-16*XVIB3(NVIB3)/EN  
+ 2311 IF(EN.LE.(2.0*EIN(11))) GO TO 312 
+      PEQIN(11,I)=PEQEL(2,(I-IOFFN(11)))
+C
+C VIBRATION V3                                       
+  312 IF(EN.LE.EIN(12)) GO TO 316 
+      IF(EN.GT.XVIB4(NVIB4)) GO TO 315                               
+      DO 313 J=2,NVIB4                                                  
+      IF(EN.LE.XVIB4(J)) GO TO 314                                      
+  313 CONTINUE                                                          
+      J=NVIB4                                                           
+  314 A=(YVIB4(J)-YVIB4(J-1))/(XVIB4(J)-XVIB4(J-1))                     
+      B=(XVIB4(J-1)*YVIB4(J)-XVIB4(J)*YVIB4(J-1))/(XVIB4(J-1)-XVIB4(J)) 
+      QIN(12,I)=(A*EN+B)*1.D-16       
+      GO TO 1315
+  315 QIN(12,I)=YVIB4(NVIB4)*1.D-16*XVIB4(NVIB4)/EN      
+ 1315 IF(EN.LE.(2.0*EIN(12))) GO TO 316 
+      PEQIN(12,2)=PEQEL(2,(I-IOFFN(12)))
+C        
+C  B3 SIGMA DISSOCIATION ELOSS=8.0EV                        
+  316 IF(EN.LE.EIN(13)) GO TO 320
+      IF(EN.GT.XB3S1(NB3S1)) GO TO 320 
+      DO 317 J=2,NB3S1                                                  
+      IF(EN.LE.XB3S1(J)) GO TO 318                                      
+  317 CONTINUE                                                          
+      J=NB3S1                                                           
+  318 A=(YB3S1(J)-YB3S1(J-1))/(XB3S1(J)-XB3S1(J-1))                     
+      B=(XB3S1(J-1)*YB3S1(J)-XB3S1(J)*YB3S1(J-1))/(XB3S1(J-1)-XB3S1(J)) 
+      QIN(13,I)=(A*EN+B)*1.D-16
+      IF(EN.LE.(2.0*EIN(13))) GO TO 320 
+      PEQIN(13,2)=PEQEL(2,(I-IOFFN(13)))
+C       
+C  B3 SIGMA DISSOCIATION ELOSS=9.0EV                                               
+  320 IF(EN.LE.EIN(14)) GO TO 324  
+      IF(EN.GT.XB3S2(NB3S2)) GO TO 324                               
+      DO 321 J=2,NB3S2                                                  
+      IF(EN.LE.XB3S2(J)) GO TO 322                                      
+  321 CONTINUE                                                          
+      J=NB3S2                                                           
+  322 A=(YB3S2(J)-YB3S2(J-1))/(XB3S2(J)-XB3S2(J-1))                     
+      B=(XB3S2(J-1)*YB3S2(J)-XB3S2(J)*YB3S2(J-1))/(XB3S2(J-1)-XB3S2(J)) 
+      QIN(14,I)=(A*EN+B)*1.D-16
+      IF(EN.LE.(2.0*EIN(14))) GO TO 324 
+      PEQIN(14,2)=PEQEL(2,(I-IOFFN(14)))
+C                                 
+C B3 SIGMA DISSOCIATION ELOSS=9.5EV
+  324 IF(EN.LE.EIN(15)) GO TO 328 
+      IF(EN.GT.XB3S3(NB3S3)) GO TO 328                               
+      DO 325 J=2,NB3S3                                                  
+      IF(EN.LE.XB3S3(J)) GO TO 326                                      
+  325 CONTINUE                                                          
+      J=NB3S3                                                           
+  326 A=(YB3S3(J)-YB3S3(J-1))/(XB3S3(J)-XB3S3(J-1))                     
+      B=(XB3S3(J-1)*YB3S3(J)-XB3S3(J)*YB3S3(J-1))/(XB3S3(J-1)-XB3S3(J)) 
+      QIN(15,I)=(A*EN+B)*1.D-16   
+      IF(EN.LE.(2.0*EIN(15))) GO TO 328 
+      PEQIN(15,2)=PEQEL(2,(I-IOFFN(15)))
+C                                                                       
+C B3 SIGMA DISSOCIATION ELOSS=10.0EV 
+C SCALED BY 1/E**3 ABOVE XB3S4(NB3S4) EV
+  328 IF(EN.LE.EIN(16)) GO TO 332 
+      IF(EN.GT.XB3S4(NB3S4)) GO TO 331                               
+      DO 329 J=2,NB3S4                                                  
+      IF(EN.LE.XB3S4(J)) GO TO 330                                      
+  329 CONTINUE                                                          
+      J=NB3S4                                                           
+  330 A=(YB3S4(J)-YB3S4(J-1))/(XB3S4(J)-XB3S4(J-1))                     
+      B=(XB3S4(J-1)*YB3S4(J)-XB3S4(J)*YB3S4(J-1))/(XB3S4(J-1)-XB3S4(J)) 
+      QIN(16,I)=(A*EN+B)*1.D-16   
+      GO TO 3331
+  331 QIN(16,I)=YB3S4(NB3S4)*1.D-16*(XB3S4(NB3S4)/EN)**3
+ 3331 IF(EN.LE.(2.0*EIN(16))) GO TO 332 
+      PEQIN(16,2)=PEQEL(2,(I-IOFFN(16)))
+C   LYMAN BANDS FOR VIB=0 TO 36    B1 SIGMA--- GROUND STATE             
+C   DIPOLE ALLOWED  
+C V=0                                                           
+  332 IF(EN.LE.EIN(17)) GO TO 333
+      QIN(17,I)=.0016884/(EIN(17)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(17)))-BETA2)*BBCONST*EN/(EN+EIN(17)+BEF(1))
+      IF(QIN(17,I).LT.0.0) QIN(17,I)=0.0
+      IF(EN.LE.(2.0*EIN(17))) GO TO 333
+      PEQIN(17,I)=PEQEL(2,(I-IOFFN(17)))
+C V=1 B1 SIGMA
+  333 IF(EN.LE.EIN(18)) GO TO 334
+      QIN(18,I)=.005782/(EIN(18)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(18)))-BETA2)*BBCONST*EN/(EN+EIN(18)+BEF(1))
+      IF(QIN(18,I).LT.0.0) QIN(18,I)=0.0
+      IF(EN.LE.(2.0*EIN(18))) GO TO 334
+      PEQIN(18,I)=PEQEL(2,(I-IOFFN(18)))
+C V=2 B1 SIGMA
+  334 IF(EN.LE.EIN(19)) GO TO 335
+      QIN(19,I)=.011536/(EIN(19)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(19)))-BETA2)*BBCONST*EN/(EN+EIN(19)+BEF(1))
+      IF(QIN(19,I).LT.0.0) QIN(19,I)=0.0
+      IF(EN.LE.(2.0*EIN(18))) GO TO 335
+      PEQIN(19,I)=PEQEL(2,(I-IOFFN(19)))
+C V=3 B1 SIGMA
+  335 IF(EN.LE.EIN(20)) GO TO 336
+      QIN(20,I)=.017531/(EIN(20)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(20)))-BETA2)*BBCONST*EN/(EN+EIN(20)+BEF(1))
+      IF(QIN(20,I).LT.0.0) QIN(20,I)=0.0
+      IF(EN.LE.(2.0*EIN(20))) GO TO 336
+      PEQIN(20,I)=PEQEL(2,(I-IOFFN(20)))
+C V=4 B1 SIGMA
+  336 IF(EN.LE.EIN(21)) GO TO 337
+      QIN(21,I)=.022477/(EIN(21)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(21)))-BETA2)*BBCONST*EN/(EN+EIN(21)+BEF(1))
+      IF(QIN(21,I).LT.0.0) QIN(21,I)=0.0
+      IF(EN.LE.(2.0*EIN(21))) GO TO 337
+      PEQIN(21,I)=PEQEL(2,(I-IOFFN(21)))
+C V=5 B1 SIGMA
+  337 IF(EN.LE.EIN(22)) GO TO 338
+      QIN(22,I)=.025688/(EIN(22)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(22)))-BETA2)*BBCONST*EN/(EN+EIN(22)+BEF(1))
+      IF(QIN(22,I).LT.0.0) QIN(22,I)=0.0
+      IF(EN.LE.(2.0*EIN(22))) GO TO 338
+      PEQIN(22,I)=PEQEL(2,(I-IOFFN(22)))
+C V=6 B1 SIGMA
+  338 IF(EN.LE.EIN(23)) GO TO 339
+      QIN(23,I)=.027021/(EIN(23)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(23)))-BETA2)*BBCONST*EN/(EN+EIN(23)+BEF(1))
+      IF(QIN(23,I).LT.0.0) QIN(23,I)=0.0
+      IF(EN.LE.(2.0*EIN(23))) GO TO 339
+      PEQIN(23,I)=PEQEL(2,(I-IOFFN(23)))
+C V=7 B1 SIGMA
+  339 IF(EN.LE.EIN(24)) GO TO 340
+      QIN(24,I)=.026731/(EIN(24)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(24)))-BETA2)*BBCONST*EN/(EN+EIN(24)+BEF(1))
+      IF(QIN(24,I).LT.0.0) QIN(24,I)=0.0
+      IF(EN.LE.(2.0*EIN(24))) GO TO 340
+      PEQIN(24,I)=PEQEL(2,(I-IOFFN(24)))
+C V=8 B1 SIGMA
+  340 IF(EN.LE.EIN(25)) GO TO 341
+      QIN(25,I)=.025233/(EIN(25)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(25)))-BETA2)*BBCONST*EN/(EN+EIN(25)+BEF(1))
+      IF(QIN(25,I).LT.0.0) QIN(25,I)=0.0
+      IF(EN.LE.(2.0*EIN(25))) GO TO 341
+      PEQIN(25,I)=PEQEL(2,(I-IOFFN(25)))
+C V=9 B1 SIGMA
+  341 IF(EN.LE.EIN(26)) GO TO 342
+      QIN(26,I)=.022980/(EIN(26)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(26)))-BETA2)*BBCONST*EN/(EN+EIN(26)+BEF(1))
+      IF(QIN(26,I).LT.0.0) QIN(26,I)=0.0
+      IF(EN.LE.(2.0*EIN(26))) GO TO 342
+      PEQIN(26,I)=PEQEL(2,(I-IOFFN(26)))
+C V=10 B1 SIGMA
+  342 IF(EN.LE.EIN(27)) GO TO 343
+      QIN(27,I)=.020362/(EIN(27)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(27)))-BETA2)*BBCONST*EN/(EN+EIN(27)+BEF(1))
+      IF(QIN(27,I).LT.0.0) QIN(27,I)=0.0
+      IF(EN.LE.(2.0*EIN(27))) GO TO 343
+      PEQIN(27,I)=PEQEL(2,(I-IOFFN(27)))
+C V=11 B1 SIGMA
+  343 IF(EN.LE.EIN(28)) GO TO 344
+      QIN(28,I)=.017653/(EIN(28)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(28)))-BETA2)*BBCONST*EN/(EN+EIN(28)+BEF(1))
+      IF(QIN(28,I).LT.0.0) QIN(28,I)=0.0
+      IF(EN.LE.(2.0*EIN(28))) GO TO 344
+      PEQIN(28,I)=PEQEL(2,(I-IOFFN(28)))
+C V=12 B1 SIGMA
+  344 IF(EN.LE.EIN(29)) GO TO 345
+      QIN(29,I)=.015054/(EIN(29)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(29)))-BETA2)*BBCONST*EN/(EN+EIN(29)+BEF(1))
+      IF(QIN(29,I).LT.0.0) QIN(29,I)=0.0
+      IF(EN.LE.(2.0*EIN(29))) GO TO 345
+      PEQIN(29,I)=PEQEL(2,(I-IOFFN(29)))
+C V=13 B1 SIGMA
+  345 IF(EN.LE.EIN(30)) GO TO 346
+      QIN(30,I)=.012678/(EIN(30)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(30)))-BETA2)*BBCONST*EN/(EN+EIN(30)+BEF(1))
+      IF(QIN(30,I).LT.0.0) QIN(30,I)=0.0
+      IF(EN.LE.(2.0*EIN(30))) GO TO 346
+      PEQIN(30,I)=PEQEL(2,(I-IOFFN(30)))
+C V=14 B1 SIGMA
+  346 IF(EN.LE.EIN(31)) GO TO 347
+      QIN(31,I)=.010567/(EIN(31)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(31)))-BETA2)*BBCONST*EN/(EN+EIN(31)+BEF(1))
+      IF(QIN(31,I).LT.0.0) QIN(31,I)=0.0
+      IF(EN.LE.(2.0*EIN(31))) GO TO 347
+      PEQIN(31,I)=PEQEL(2,(I-IOFFN(31)))
+C V=15 B1 SIGMA
+  347 IF(EN.LE.EIN(32)) GO TO 348
+      QIN(32,I)=.008746/(EIN(32)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(32)))-BETA2)*BBCONST*EN/(EN+EIN(32)+BEF(1))
+      IF(QIN(32,I).LT.0.0) QIN(32,I)=0.0
+      IF(EN.LE.(2.0*EIN(32))) GO TO 348
+      PEQIN(32,I)=PEQEL(2,(I-IOFFN(32)))
+C V=16 B1 SIGMA
+  348 IF(EN.LE.EIN(33)) GO TO 349
+      QIN(33,I)=.007201/(EIN(33)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(33)))-BETA2)*BBCONST*EN/(EN+EIN(33)+BEF(1))
+      IF(QIN(33,I).LT.0.0) QIN(33,I)=0.0
+      IF(EN.LE.(2.0*EIN(33))) GO TO 349
+      PEQIN(33,I)=PEQEL(2,(I-IOFFN(33)))
+C V=17 B1 SIGMA
+  349 IF(EN.LE.EIN(34)) GO TO 350
+      QIN(34,I)=.005909/(EIN(34)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(34)))-BETA2)*BBCONST*EN/(EN+EIN(34)+BEF(1))
+      IF(QIN(34,I).LT.0.0) QIN(34,I)=0.0
+      IF(EN.LE.(2.0*EIN(34))) GO TO 350
+      PEQIN(34,I)=PEQEL(2,(I-IOFFN(34)))
+C V=18 B1 SIGMA
+  350 IF(EN.LE.EIN(35)) GO TO 351
+      QIN(35,I)=.004838/(EIN(35)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(35)))-BETA2)*BBCONST*EN/(EN+EIN(35)+BEF(1))
+      IF(QIN(35,I).LT.0.0) QIN(35,I)=0.0
+      IF(EN.LE.(2.0*EIN(35))) GO TO 351
+      PEQIN(35,I)=PEQEL(2,(I-IOFFN(35)))
+C V=19 B1 SIGMA
+  351 IF(EN.LE.EIN(36)) GO TO 352
+      QIN(36,I)=.003956/(EIN(36)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(36)))-BETA2)*BBCONST*EN/(EN+EIN(36)+BEF(1))
+      IF(QIN(36,I).LT.0.0) QIN(36,I)=0.0
+      IF(EN.LE.(2.0*EIN(36))) GO TO 352
+      PEQIN(36,I)=PEQEL(2,(I-IOFFN(36)))
+C V=20 B1 SIGMA
+  352 IF(EN.LE.EIN(37)) GO TO 353
+      QIN(37,I)=.003233/(EIN(37)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(37)))-BETA2)*BBCONST*EN/(EN+EIN(37)+BEF(1))
+      IF(QIN(37,I).LT.0.0) QIN(37,I)=0.0
+      IF(EN.LE.(2.0*EIN(37))) GO TO 353
+      PEQIN(37,I)=PEQEL(2,(I-IOFFN(37)))
+C V=21 B1 SIGMA
+  353 IF(EN.LE.EIN(38)) GO TO 354
+      QIN(38,I)=.002644/(EIN(38)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(38)))-BETA2)*BBCONST*EN/(EN+EIN(38)+BEF(1))
+      IF(QIN(38,I).LT.0.0) QIN(38,I)=0.0
+      IF(EN.LE.(2.0*EIN(38))) GO TO 354
+      PEQIN(38,I)=PEQEL(2,(I-IOFFN(38)))
+C V=22 B1 SIGMA
+  354 IF(EN.LE.EIN(39)) GO TO 355
+      QIN(39,I)=.002165/(EIN(39)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(39)))-BETA2)*BBCONST*EN/(EN+EIN(39)+BEF(1))
+      IF(QIN(39,I).LT.0.0) QIN(39,I)=0.0
+      IF(EN.LE.(2.0*EIN(39))) GO TO 355
+      PEQIN(39,I)=PEQEL(2,(I-IOFFN(39)))
+C V=23 B1 SIGMA
+  355 IF(EN.LE.EIN(40)) GO TO 356
+      QIN(40,I)=.001775/(EIN(40)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(40)))-BETA2)*BBCONST*EN/(EN+EIN(40)+BEF(1))
+      IF(QIN(40,I).LT.0.0) QIN(40,I)=0.0
+      IF(EN.LE.(2.0*EIN(40))) GO TO 356
+      PEQIN(40,I)=PEQEL(2,(I-IOFFN(40)))
+C V=24 B1 SIGMA
+  356 IF(EN.LE.EIN(41)) GO TO 357
+      QIN(41,I)=.001457/(EIN(41)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(41)))-BETA2)*BBCONST*EN/(EN+EIN(41)+BEF(1))
+      IF(QIN(41,I).LT.0.0) QIN(41,I)=0.0
+      IF(EN.LE.(2.0*EIN(41))) GO TO 357
+      PEQIN(41,I)=PEQEL(2,(I-IOFFN(41)))
+C V=25 B1 SIGMA
+  357 IF(EN.LE.EIN(42)) GO TO 358
+      QIN(42,I)=.001199/(EIN(42)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(42)))-BETA2)*BBCONST*EN/(EN+EIN(42)+BEF(1))
+      IF(QIN(42,I).LT.0.0) QIN(42,I)=0.0
+      IF(EN.LE.(2.0*EIN(42))) GO TO 358
+      PEQIN(42,I)=PEQEL(2,(I-IOFFN(42)))
+C V=26 B1 SIGMA
+  358 IF(EN.LE.EIN(43)) GO TO 359
+      QIN(43,I)=.0009882/(EIN(43)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(43)))-BETA2)*BBCONST*EN/(EN+EIN(43)+BEF(1))
+      IF(QIN(43,I).LT.0.0) QIN(43,I)=0.0
+      IF(EN.LE.(2.0*EIN(43))) GO TO 359
+      PEQIN(43,I)=PEQEL(2,(I-IOFFN(43)))
+C V=27 B1 SIGMA
+  359 IF(EN.LE.EIN(44)) GO TO 360
+      QIN(44,I)=.0008153/(EIN(44)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(44)))-BETA2)*BBCONST*EN/(EN+EIN(44)+BEF(1))
+      IF(QIN(44,I).LT.0.0) QIN(44,I)=0.0
+      IF(EN.LE.(2.0*EIN(44))) GO TO 360
+      PEQIN(44,I)=PEQEL(2,(I-IOFFN(44)))
+C V=28 B1 SIGMA
+  360 IF(EN.LE.EIN(45)) GO TO 361
+      QIN(45,I)=.0006738/(EIN(45)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(45)))-BETA2)*BBCONST*EN/(EN+EIN(45)+BEF(1))
+      IF(QIN(45,I).LT.0.0) QIN(45,I)=0.0
+      IF(EN.LE.(2.0*EIN(45))) GO TO 361
+      PEQIN(45,I)=PEQEL(2,(I-IOFFN(45)))
+C V=29 B1 SIGMA
+  361 IF(EN.LE.EIN(46)) GO TO 362
+      QIN(46,I)=.0005561/(EIN(46)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(46)))-BETA2)*BBCONST*EN/(EN+EIN(46)+BEF(1))
+      IF(QIN(46,I).LT.0.0) QIN(46,I)=0.0
+      IF(EN.LE.(2.0*EIN(46))) GO TO 362
+      PEQIN(46,I)=PEQEL(2,(I-IOFFN(46)))
+C V=30 B1 SIGMA
+  362 IF(EN.LE.EIN(47)) GO TO 363
+      QIN(47,I)=.0004573/(EIN(47)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(47)))-BETA2)*BBCONST*EN/(EN+EIN(47)+BEF(1))
+      IF(QIN(47,I).LT.0.0) QIN(47,I)=0.0
+      IF(EN.LE.(2.0*EIN(47))) GO TO 363
+      PEQIN(47,I)=PEQEL(2,(I-IOFFN(47)))
+C V=31 B1 SIGMA 
+  363 IF(EN.LE.EIN(48)) GO TO 364
+      QIN(48,I)=.0003731/(EIN(48)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(48)))-BETA2)*BBCONST*EN/(EN+EIN(48)+BEF(1))
+      IF(QIN(48,I).LT.0.0) QIN(48,I)=0.0
+      IF(EN.LE.(2.0*EIN(48))) GO TO 364
+      PEQIN(48,I)=PEQEL(2,(I-IOFFN(48)))
+C V=32 B1 SIGMA 
+  364 IF(EN.LE.EIN(49)) GO TO 365
+      QIN(49,I)=.0002992/(EIN(49)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(49)))-BETA2)*BBCONST*EN/(EN+EIN(49)+BEF(1))
+      IF(QIN(49,I).LT.0.0) QIN(49,I)=0.0
+      IF(EN.LE.(2.0*EIN(49))) GO TO 365
+      PEQIN(49,I)=PEQEL(2,(I-IOFFN(49)))
+C V=33 B1 SIGMA 
+  365 IF(EN.LE.EIN(50)) GO TO 366
+      QIN(50,I)=.0002309/(EIN(50)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(50)))-BETA2)*BBCONST*EN/(EN+EIN(50)+BEF(1))
+      IF(QIN(50,I).LT.0.0) QIN(50,I)=0.0
+      IF(EN.LE.(2.0*EIN(50))) GO TO 366
+      PEQIN(50,I)=PEQEL(2,(I-IOFFN(50)))
+C V=34 B1 SIGMA 
+  366 IF(EN.LE.EIN(51)) GO TO 367
+      QIN(51,I)=.0001627/(EIN(51)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(51)))-BETA2)*BBCONST*EN/(EN+EIN(51)+BEF(1))
+      IF(QIN(51,I).LT.0.0) QIN(51,I)=0.0
+      IF(EN.LE.(2.0*EIN(51))) GO TO 367
+      PEQIN(51,I)=PEQEL(2,(I-IOFFN(51)))
+C V=35 B1 SIGMA 
+  367 IF(EN.LE.EIN(52)) GO TO 368
+      QIN(52,I)=8.652D-5/(EIN(52)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(52)))-BETA2)*BBCONST*EN/(EN+EIN(52)+BEF(1))
+      IF(QIN(52,I).LT.0.0) QIN(52,I)=0.0
+      IF(EN.LE.(2.0*EIN(52))) GO TO 368
+      PEQIN(52,I)=PEQEL(2,(I-IOFFN(52)))
+C V=36 B1 SIGMA 
+  368 IF(EN.LE.EIN(53)) GO TO 369
+      QIN(53,I)=2.256D-5/(EIN(53)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(53)))-BETA2)*BBCONST*EN/(EN+EIN(53)+BEF(1))
+      IF(QIN(53,I).LT.0.0) QIN(53,I)=0.0
+      IF(EN.LE.(2.0*EIN(53))) GO TO 369
+      PEQIN(53,I)=PEQEL(2,(I-IOFFN(53)))
+C V=0  C1 PI    
+  369 IF(EN.LE.EIN(54)) GO TO 370
+      QIN(54,I)=.0476000/(EIN(54)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(54)))-BETA2)*BBCONST*EN/(EN+EIN(54)+BEF(2))
+      IF(QIN(54,I).LT.0.0) QIN(54,I)=0.0
+      IF(EN.LE.(2.0*EIN(54))) GO TO 370
+      PEQIN(54,I)=PEQEL(2,(I-IOFFN(54)))
+C V=1  C1 PI    
+  370 IF(EN.LE.EIN(55)) GO TO 371
+      QIN(55,I)=.0728400/(EIN(55)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(55)))-BETA2)*BBCONST*EN/(EN+EIN(55)+BEF(2))
+      IF(QIN(55,I).LT.0.0) QIN(55,I)=0.0
+      IF(EN.LE.(2.0*EIN(55))) GO TO 371
+      PEQIN(55,I)=PEQEL(2,(I-IOFFN(55)))
+C V=2  C1 PI    
+  371 IF(EN.LE.EIN(56)) GO TO 372
+      QIN(56,I)=.0698200/(EIN(56)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(56)))-BETA2)*BBCONST*EN/(EN+EIN(56)+BEF(2))
+      IF(QIN(56,I).LT.0.0) QIN(56,I)=0.0
+      IF(EN.LE.(2.0*EIN(56))) GO TO 372
+      PEQIN(56,I)=PEQEL(2,(I-IOFFN(56)))
+C V=3  C1 PI    
+  372 IF(EN.LE.EIN(57)) GO TO 373
+      QIN(57,I)=.0547200/(EIN(57)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(57)))-BETA2)*BBCONST*EN/(EN+EIN(57)+BEF(2))
+      IF(QIN(57,I).LT.0.0) QIN(57,I)=0.0
+      IF(EN.LE.(2.0*EIN(57))) GO TO 373
+      PEQIN(57,I)=PEQEL(2,(I-IOFFN(57)))
+C V=4  C1 PI    
+  373 IF(EN.LE.EIN(58)) GO TO 374
+      QIN(58,I)=.0387400/(EIN(58)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(58)))-BETA2)*BBCONST*EN/(EN+EIN(58)+BEF(2))
+      IF(QIN(58,I).LT.0.0) QIN(58,I)=0.0
+      IF(EN.LE.(2.0*EIN(58))) GO TO 374
+      PEQIN(58,I)=PEQEL(2,(I-IOFFN(58)))
+C V=5  C1 PI    
+  374 IF(EN.LE.EIN(59)) GO TO 375
+      QIN(59,I)=.0259800/(EIN(59)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(59)))-BETA2)*BBCONST*EN/(EN+EIN(59)+BEF(2))
+      IF(QIN(59,I).LT.0.0) QIN(59,I)=0.0
+      IF(EN.LE.(2.0*EIN(59))) GO TO 375
+      PEQIN(59,I)=PEQEL(2,(I-IOFFN(59)))
+C V=6  C1 PI    
+  375 IF(EN.LE.EIN(60)) GO TO 376
+      QIN(60,I)=.0170000/(EIN(60)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(60)))-BETA2)*BBCONST*EN/(EN+EIN(60)+BEF(2))
+      IF(QIN(60,I).LT.0.0) QIN(60,I)=0.0
+      IF(EN.LE.(2.0*EIN(60))) GO TO 376
+      PEQIN(60,I)=PEQEL(2,(I-IOFFN(60)))
+C V=7  C1 PI    
+  376 IF(EN.LE.EIN(61)) GO TO 377
+      QIN(61,I)=.0109900/(EIN(61)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(61)))-BETA2)*BBCONST*EN/(EN+EIN(61)+BEF(2))
+      IF(QIN(61,I).LT.0.0) QIN(61,I)=0.0
+      IF(EN.LE.(2.0*EIN(61))) GO TO 377
+      PEQIN(61,I)=PEQEL(2,(I-IOFFN(61)))
+C V=8  C1 PI    
+  377 IF(EN.LE.EIN(62)) GO TO 378
+      QIN(62,I)=.0070980/(EIN(62)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(62)))-BETA2)*BBCONST*EN/(EN+EIN(62)+BEF(2))
+      IF(QIN(62,I).LT.0.0) QIN(62,I)=0.0
+      IF(EN.LE.(2.0*EIN(62))) GO TO 378
+      PEQIN(62,I)=PEQEL(2,(I-IOFFN(62)))
+C V=9  C1 PI    
+  378 IF(EN.LE.EIN(63)) GO TO 379
+      QIN(63,I)=.0045920/(EIN(63)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(63)))-BETA2)*BBCONST*EN/(EN+EIN(63)+BEF(2))
+      IF(QIN(63,I).LT.0.0) QIN(63,I)=0.0
+      IF(EN.LE.(2.0*EIN(63))) GO TO 379
+      PEQIN(63,I)=PEQEL(2,(I-IOFFN(63)))
+C V=10 C1 PI    
+  379 IF(EN.LE.EIN(64)) GO TO 380
+      QIN(64,I)=.0029760/(EIN(64)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(64)))-BETA2)*BBCONST*EN/(EN+EIN(64)+BEF(2))
+      IF(QIN(64,I).LT.0.0) QIN(64,I)=0.0
+      IF(EN.LE.(2.0*EIN(64))) GO TO 380
+      PEQIN(64,I)=PEQEL(2,(I-IOFFN(64)))
+C V=11 C1 PI    
+  380 IF(EN.LE.EIN(65)) GO TO 381
+      QIN(65,I)=.0019090/(EIN(65)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(65)))-BETA2)*BBCONST*EN/(EN+EIN(65)+BEF(2))
+      IF(QIN(65,I).LT.0.0) QIN(65,I)=0.0
+      IF(EN.LE.(2.0*EIN(65))) GO TO 381
+      PEQIN(65,I)=PEQEL(2,(I-IOFFN(65)))
+C V=12 C1 PI    
+  381 IF(EN.LE.EIN(66)) GO TO 382
+      QIN(66,I)=.0011710/(EIN(66)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(66)))-BETA2)*BBCONST*EN/(EN+EIN(66)+BEF(2))
+      IF(QIN(66,I).LT.0.0) QIN(66,I)=0.0
+      IF(EN.LE.(2.0*EIN(66))) GO TO 382
+      PEQIN(66,I)=PEQEL(2,(I-IOFFN(66)))
+C V=13 C1 PI    
+  382 IF(EN.LE.EIN(67)) GO TO 383
+      QIN(67,I)=.0005590/(EIN(67)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(67)))-BETA2)*BBCONST*EN/(EN+EIN(67)+BEF(2))
+      IF(QIN(67,I).LT.0.0) QIN(67,I)=0.0
+      IF(EN.LE.(2.0*EIN(67))) GO TO 383
+      PEQIN(67,I)=PEQEL(2,(I-IOFFN(67)))
+C C3PI V=0-4  METASTABLE LEVEL     FRANCK-CONDON FAC=0.6967
+C SCALED BY 1/E**3 ABOVE XC3PI(NC3PI) EV
+  383 IF(EN.LE.EIN(68)) GO TO 387 
+      IF(EN.GT.XC3PI(NC3PI)) GO TO 386                               
+      DO 384 J=2,NC3PI                                                  
+      IF(EN.LE.XC3PI(J)) GO TO 385                                      
+  384 CONTINUE                                                          
+      J=NC3PI                                                           
+  385 A=(YC3PI(J)-YC3PI(J-1))/(XC3PI(J)-XC3PI(J-1))                     
+      B=(XC3PI(J-1)*YC3PI(J)-XC3PI(J)*YC3PI(J-1))/(XC3PI(J-1)-XC3PI(J)) 
+      QIN(68,I)=(A*EN+B)*1.D-16*0.6967
+      GO TO 1386
+  386 QIN(68,I)=YC3PI(NC3PI)*1.D-16*((XC3PI(NC3PI)/EN)**3)*0.6967
+ 1386 IF(EN.LE.(2.0*EIN(68))) GO TO 387
+      PEQIN(68,I)=PEQEL(2,(I-IOFFN(68)))
+C C3PI V=5-18 METASTABLE LEVEL     FRANCK-CONDON FAC=0.3033
+C SCALED BY 1/E**3 ABOVE XC3PI(NC3PI) EV
+  387 IF(EN.LE.EIN(69)) GO TO 391 
+      IF(EN.GT.XC3PI(NC3PI)) GO TO 390                               
+      DO 388 J=2,NC3PI                                                  
+      IF(EN.LE.XC3PI(J)) GO TO 389                                      
+  388 CONTINUE                                                          
+      J=NC3PI                                                           
+  389 A=(YC3PI(J)-YC3PI(J-1))/(XC3PI(J)-XC3PI(J-1))                     
+      B=(XC3PI(J-1)*YC3PI(J)-XC3PI(J)*YC3PI(J-1))/(XC3PI(J-1)-XC3PI(J)) 
+      QIN(69,I)=(A*EN+B)*1.D-16*0.3033   
+      GO TO 1390
+  390 QIN(69,I)=YC3PI(NC3PI)*1.D-16*((XC3PI(NC3PI)/EN)**3)*0.3033
+ 1390 IF(EN.LE.(2.0*EIN(69))) GO TO 391
+      PEQIN(69,I)=PEQEL(2,(I-IOFFN(69)))
+C A3SG V=0-2                   FRANCK-CONDON FAC=0.6668
+C SCALED BY 1/E**3 ABOVE XA3SG(NA3SG) EV
+  391 IF(EN.LE.EIN(70)) GO TO 395 
+      IF(EN.GT.XA3SG(NA3SG)) GO TO 394                               
+      DO 392 J=2,NA3SG                                                  
+      IF(EN.LE.XA3SG(J)) GO TO 393                                      
+  392 CONTINUE                                                          
+      J=NA3SG                                                           
+  393 A=(YA3SG(J)-YA3SG(J-1))/(XA3SG(J)-XA3SG(J-1))                     
+      B=(XA3SG(J-1)*YA3SG(J)-XA3SG(J)*YA3SG(J-1))/(XA3SG(J-1)-XA3SG(J)) 
+      QIN(70,I)=(A*EN+B)*1.D-16*0.6668   
+      GO TO 1394
+  394 QIN(70,I)=YA3SG(NA3SG)*1.D-16*((XA3SG(NA3SG)/EN)**3)*0.6668
+ 1394 IF(EN.LE.(2.0*EIN(70))) GO TO 395
+      PEQIN(70,I)=PEQEL(2,(I-IOFFN(70)))
+C A3SG V=3-17                  FRANCK-CONDON FAC=0.3332
+C SCALED BY 1/E**3 ABOVE XA3SG(NA3SG) EV
+  395 IF(EN.LE.EIN(71)) GO TO 399 
+      IF(EN.GT.XA3SG(NA3SG)) GO TO 398                               
+      DO 396 J=2,NA3SG                                                  
+      IF(EN.LE.XA3SG(J)) GO TO 397                                      
+  396 CONTINUE                                                          
+      J=NA3SG                                                           
+  397 A=(YA3SG(J)-YA3SG(J-1))/(XA3SG(J)-XA3SG(J-1))                     
+      B=(XA3SG(J-1)*YA3SG(J)-XA3SG(J)*YA3SG(J-1))/(XA3SG(J-1)-XA3SG(J)) 
+      QIN(71,I)=(A*EN+B)*1.D-16*0.3332
+      GO TO 1398
+  398 QIN(71,I)=YA3SG(NA3SG)*1.D-16*((XA3SG(NA3SG)/EN)**3)*0.3332
+ 1398 IF(EN.LE.(2.0*EIN(71))) GO TO 399
+      PEQIN(71,I)=PEQEL(2,(I-IOFFN(71)))
+C E3SG V=0-9                                           
+C SCALED BY 1/E**3 ABOVE XE3SG(NE3SG) EV
+  399 IF(EN.LE.EIN(72)) GO TO 403 
+      IF(EN.GT.XE3SG(NE3SG)) GO TO 402                               
+      DO 400 J=2,NE3SG                                                  
+      IF(EN.LE.XE3SG(J)) GO TO 401                                      
+  400 CONTINUE                                                          
+      J=NE3SG                                                           
+  401 A=(YE3SG(J)-YE3SG(J-1))/(XE3SG(J)-XE3SG(J-1))                     
+      B=(XE3SG(J-1)*YE3SG(J)-XE3SG(J)*YE3SG(J-1))/(XE3SG(J-1)-XE3SG(J)) 
+      QIN(72,I)=(A*EN+B)*1.D-16          
+      GO TO 2402
+  402 QIN(72,I)=YE3SG(NE3SG)*1.D-16*(XE3SG(NE3SG)/EN)**3        
+ 2402 IF(EN.LE.(2.0*EIN(72))) GO TO 403
+      PEQIN(72,I)=PEQEL(2,(I-IOFFN(72)))
+C EF1 SIGMA V=0-5                   FRANCK-CONDON FACTOR=0.4
+C USE BORN SCALING ABOVE XEFSG(NEFSG)  EV
+  403 IF(EN.LE.EIN(73)) GO TO 407 
+      IF(EN.GT.XEFSG(NEFSG)) GO TO 406                               
+      DO 404 J=2,NEFSG                                                  
+      IF(EN.LE.XEFSG(J)) GO TO 405                                      
+  404 CONTINUE                                                          
+      J=NEFSG                                                           
+  405 A=(YEFSG(J)-YEFSG(J-1))/(XEFSG(J)-XEFSG(J-1))                     
+      B=(XEFSG(J-1)*YEFSG(J)-XEFSG(J)*YEFSG(J-1))/(XEFSG(J-1)-XEFSG(J)) 
+      QIN(73,I)=(A*EN+B)*1.D-16*0.4          
+      GO TO 1406
+  406 QIN(73,I)=.0089000/(EIN(73)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(73)))-BETA2)*BBCONST*EN/(EN+EIN(73)+BEF(3))
+      IF(QIN(73,I).LT.0.0) QIN(73,I)=0.0
+ 1406 IF(EN.LE.(2.0*EIN(73))) GO TO 407
+      PEQIN(73,I)=PEQEL(2,(I-IOFFN(73)))
+C EF1 SIGMA V=6-19                   FRANCK-CONDON FACTOR=0.6
+C USE BORN SCALING ABOVE XEFSG(NEFSG) EV
+  407 IF(EN.LE.EIN(74)) GO TO 411 
+      IF(EN.GT.XEFSG(NEFSG)) GO TO 410                               
+      DO 408 J=2,NEFSG                                                  
+      IF(EN.LE.XEFSG(J)) GO TO 409                                      
+  408 CONTINUE                                                          
+      J=NEFSG                                                           
+  409 A=(YEFSG(J)-YEFSG(J-1))/(XEFSG(J)-XEFSG(J-1))                     
+      B=(XEFSG(J-1)*YEFSG(J)-XEFSG(J)*YEFSG(J-1))/(XEFSG(J-1)-XEFSG(J)) 
+      QIN(74,I)=(A*EN+B)*1.D-16*0.6          
+      GO TO 1410
+  410 QIN(74,I)=.0133000/(EIN(74)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(74)))-BETA2)*BBCONST*EN/(EN+EIN(74)+BEF(3))
+      IF(QIN(74,I).LT.0.0) QIN(74,I)=0.0
+ 1410 IF(EN.LE.(2.0*EIN(74))) GO TO 411
+      PEQIN(74,I)=PEQEL(2,(I-IOFFN(74)))
+C B!1 SIGMA V=0       
+  411 IF(EN.LE.EIN(75)) GO TO 412
+      QIN(75,I)=.003970/(EIN(75)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(75)))-BETA2)*BBCONST*EN/(EN+EIN(75)+BEF(4))
+      IF(QIN(75,I).LT.0.0) QIN(75,I)=0.0
+      IF(EN.LE.(2.0*EIN(75))) GO TO 412
+      PEQIN(75,I)=PEQEL(2,(I-IOFFN(75)))
+C B!1 SIGMA V=1         
+  412 IF(EN.LE.EIN(76)) GO TO 413
+      QIN(76,I)=.008150/(EIN(76)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(76)))-BETA2)*BBCONST*EN/(EN+EIN(76)+BEF(4))
+      IF(QIN(76,I).LT.0.0) QIN(76,I)=0.0
+      IF(EN.LE.(2.0*EIN(76))) GO TO 413
+      PEQIN(76,I)=PEQEL(2,(I-IOFFN(76)))
+C B!1 SIGMA V=2         
+  413 IF(EN.LE.EIN(77)) GO TO 414
+      QIN(77,I)=.009980/(EIN(77)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(77)))-BETA2)*BBCONST*EN/(EN+EIN(77)+BEF(4))
+      IF(QIN(77,I).LT.0.0) QIN(77,I)=0.0
+      IF(EN.LE.(2.0*EIN(77))) GO TO 414
+      PEQIN(77,I)=PEQEL(2,(I-IOFFN(77)))
+C B!1 SIGMA V=3         
+  414 IF(EN.LE.EIN(78)) GO TO 415
+      QIN(78,I)=.009520/(EIN(78)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(78)))-BETA2)*BBCONST*EN/(EN+EIN(78)+BEF(4))
+      IF(QIN(78,I).LT.0.0) QIN(78,I)=0.0
+      IF(EN.LE.(2.0*EIN(78))) GO TO 415
+      PEQIN(78,I)=PEQEL(2,(I-IOFFN(78)))
+C B!1 SIGMA V=4         
+  415 IF(EN.LE.EIN(79)) GO TO 416
+      QIN(79,I)=.007550/(EIN(79)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(79)))-BETA2)*BBCONST*EN/(EN+EIN(79)+BEF(4))
+      IF(QIN(79,I).LT.0.0) QIN(79,I)=0.0
+      IF(EN.LE.(2.0*EIN(79))) GO TO 416
+      PEQIN(79,I)=PEQEL(2,(I-IOFFN(79)))
+C B!1 SIGMA V=5         
+  416 IF(EN.LE.EIN(80)) GO TO 417
+      QIN(80,I)=.004230/(EIN(80)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(80)))-BETA2)*BBCONST*EN/(EN+EIN(80)+BEF(4))
+      IF(QIN(80,I).LT.0.0) QIN(80,I)=0.0
+      IF(EN.LE.(2.0*EIN(80))) GO TO 417
+      PEQIN(80,I)=PEQEL(2,(I-IOFFN(80)))
+C B!1 SIGMA V=6         
+  417 IF(EN.LE.EIN(81)) GO TO 418
+      QIN(81,I)=.000460/(EIN(81)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(81)))-BETA2)*BBCONST*EN/(EN+EIN(81)+BEF(4))
+      IF(QIN(81,I).LT.0.0) QIN(81,I)=0.0
+      IF(EN.LE.(2.0*EIN(81))) GO TO 418
+      PEQIN(81,I)=PEQEL(2,(I-IOFFN(81)))
+C B!1 SIGMA V=7         
+  418 IF(EN.LE.EIN(82)) GO TO 419
+      QIN(82,I)=.000450/(EIN(82)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(82)))-BETA2)*BBCONST*EN/(EN+EIN(82)+BEF(4))
+      IF(QIN(82,I).LT.0.0) QIN(82,I)=0.0
+      IF(EN.LE.(2.0*EIN(82))) GO TO 419
+      PEQIN(82,I)=PEQEL(2,(I-IOFFN(82)))
+C B!1 SIGMA V=8         
+  419 IF(EN.LE.EIN(83)) GO TO 420
+      QIN(83,I)=.000300/(EIN(83)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(83)))-BETA2)*BBCONST*EN/(EN+EIN(83)+BEF(4))
+      IF(QIN(83,I).LT.0.0) QIN(83,I)=0.0
+      IF(EN.LE.(2.0*EIN(83))) GO TO 420
+      PEQIN(83,I)=PEQEL(2,(I-IOFFN(83)))
+C D1 PI     V=0         
+  420 IF(EN.LE.EIN(84)) GO TO 421
+      QIN(84,I)=.007750/(EIN(84)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(84)))-BETA2)*BBCONST*EN/(EN+EIN(84)+BEF(5))
+      IF(QIN(84,I).LT.0.0) QIN(84,I)=0.0
+      IF(EN.LE.(2.0*EIN(85))) GO TO 421
+      PEQIN(84,I)=PEQEL(2,(I-IOFFN(84)))
+C D1 PI     V=1         
+  421 IF(EN.LE.EIN(85)) GO TO 422
+      QIN(85,I)=.013100/(EIN(85)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(85)))-BETA2)*BBCONST*EN/(EN+EIN(85)+BEF(5))
+      IF(QIN(85,I).LT.0.0) QIN(85,I)=0.0
+      IF(EN.LE.(2.0*EIN(85))) GO TO 422
+      PEQIN(85,I)=PEQEL(2,(I-IOFFN(85)))
+C D1 PI     V=2         
+  422 IF(EN.LE.EIN(86)) GO TO 423
+      QIN(86,I)=.013670/(EIN(86)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(86)))-BETA2)*BBCONST*EN/(EN+EIN(86)+BEF(5))
+      IF(QIN(86,I).LT.0.0) QIN(86,I)=0.0
+      IF(EN.LE.(2.0*EIN(86))) GO TO 423
+      PEQIN(86,I)=PEQEL(2,(I-IOFFN(86)))
+C D1 PI     V=3         
+  423 IF(EN.LE.EIN(87)) GO TO 424
+      QIN(87,I)=.011560/(EIN(87)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(87)))-BETA2)*BBCONST*EN/(EN+EIN(87)+BEF(5))
+      IF(QIN(87,I).LT.0.0) QIN(87,I)=0.0
+      IF(EN.LE.(2.0*EIN(87))) GO TO 424
+      PEQIN(87,I)=PEQEL(2,(I-IOFFN(87)))
+C D1 PI     V=4         
+  424 IF(EN.LE.EIN(88)) GO TO 425
+      QIN(88,I)=.008730/(EIN(88)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(88)))-BETA2)*BBCONST*EN/(EN+EIN(88)+BEF(5))
+      IF(QIN(88,I).LT.0.0) QIN(88,I)=0.0
+      IF(EN.LE.(2.0*EIN(88))) GO TO 425
+      PEQIN(88,I)=PEQEL(2,(I-IOFFN(88)))
+C D1 PI     V=5         
+  425 IF(EN.LE.EIN(89)) GO TO 426
+      QIN(89,I)=.006190/(EIN(89)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(89)))-BETA2)*BBCONST*EN/(EN+EIN(89)+BEF(5))
+      IF(QIN(89,I).LT.0.0) QIN(89,I)=0.0
+      IF(EN.LE.(2.0*EIN(89))) GO TO 426
+      PEQIN(89,I)=PEQEL(2,(I-IOFFN(89)))
+C D1 PI     V=6         
+  426 IF(EN.LE.EIN(90)) GO TO 427
+      QIN(90,I)=.004280/(EIN(90)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(90)))-BETA2)*BBCONST*EN/(EN+EIN(90)+BEF(5))
+      IF(QIN(90,I).LT.0.0) QIN(90,I)=0.0
+      IF(EN.LE.(2.0*EIN(90))) GO TO 427
+      PEQIN(90,I)=PEQEL(2,(I-IOFFN(90)))
+C D1 PI     V=7         
+  427 IF(EN.LE.EIN(91)) GO TO 428
+      QIN(91,I)=.002920/(EIN(91)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(91)))-BETA2)*BBCONST*EN/(EN+EIN(91)+BEF(5))
+      IF(QIN(91,I).LT.0.0) QIN(91,I)=0.0
+      IF(EN.LE.(2.0*EIN(91))) GO TO 428
+      PEQIN(91,I)=PEQEL(2,(I-IOFFN(91)))
+C D1 PI     V=8         
+  428 IF(EN.LE.EIN(92)) GO TO 429
+      QIN(92,I)=.001960/(EIN(92)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(92)))-BETA2)*BBCONST*EN/(EN+EIN(92)+BEF(5))
+      IF(QIN(92,I).LT.0.0) QIN(92,I)=0.0
+      IF(EN.LE.(2.0*EIN(92))) GO TO 429
+      PEQIN(92,I)=PEQEL(2,(I-IOFFN(92)))
+C D1 PI     V=9         
+  429 IF(EN.LE.EIN(93)) GO TO 430
+      QIN(93,I)=.001330/(EIN(93)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(93)))-BETA2)*BBCONST*EN/(EN+EIN(93)+BEF(5))
+      IF(QIN(93,I).LT.0.0) QIN(93,I)=0.0
+      IF(EN.LE.(2.0*EIN(93))) GO TO 430
+      PEQIN(93,I)=PEQEL(2,(I-IOFFN(93)))
+C D1 PI     V=10        
+  430 IF(EN.LE.EIN(94)) GO TO 431
+      QIN(94,I)=.000910/(EIN(94)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(94)))-BETA2)*BBCONST*EN/(EN+EIN(94)+BEF(5))
+      IF(QIN(94,I).LT.0.0) QIN(94,I)=0.0
+      IF(EN.LE.(2.0*EIN(94))) GO TO 431
+      PEQIN(94,I)=PEQEL(2,(I-IOFFN(94)))
+C D1 PI     V=11        
+  431 IF(EN.LE.EIN(95)) GO TO 432
+      QIN(95,I)=.000630/(EIN(95)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(95)))-BETA2)*BBCONST*EN/(EN+EIN(95)+BEF(5))
+      IF(QIN(95,I).LT.0.0) QIN(95,I)=0.0
+      IF(EN.LE.(2.0*EIN(95))) GO TO 432
+      PEQIN(95,I)=PEQEL(2,(I-IOFFN(95)))
+C D1 PI     V=12        
+  432 IF(EN.LE.EIN(96)) GO TO 433
+      QIN(96,I)=.000430/(EIN(96)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(96)))-BETA2)*BBCONST*EN/(EN+EIN(96)+BEF(5))
+      IF(QIN(96,I).LT.0.0) QIN(96,I)=0.0
+      IF(EN.LE.(2.0*EIN(96))) GO TO 433
+      PEQIN(96,I)=PEQEL(2,(I-IOFFN(96)))
+C D1 PI     V=13        
+  433 IF(EN.LE.EIN(97)) GO TO 434
+      QIN(97,I)=.000290/(EIN(97)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(97)))-BETA2)*BBCONST*EN/(EN+EIN(97)+BEF(5))
+      IF(QIN(97,I).LT.0.0) QIN(97,I)=0.0
+      IF(EN.LE.(2.0*EIN(97))) GO TO 434
+      PEQIN(97,I)=PEQEL(2,(I-IOFFN(97)))
+C D1 PI     V=14        
+  434 IF(EN.LE.EIN(98)) GO TO 435
+      QIN(98,I)=.000200/(EIN(98)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(98)))-BETA2)*BBCONST*EN/(EN+EIN(98)+BEF(5))
+      IF(QIN(98,I).LT.0.0) QIN(98,I)=0.0
+      IF(EN.LE.(2.0*EIN(98))) GO TO 435
+      PEQIN(98,I)=PEQEL(2,(I-IOFFN(98)))
+C D1 PI     V=15        
+  435 IF(EN.LE.EIN(99)) GO TO 436
+      QIN(99,I)=.000120/(EIN(99)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(99)))-BETA2)*BBCONST*EN/(EN+EIN(99)+BEF(5))
+      IF(QIN(99,I).LT.0.0) QIN(99,I)=0.0
+      IF(EN.LE.(2.0*EIN(99))) GO TO 436
+      PEQIN(99,I)=PEQEL(2,(I-IOFFN(99)))
+C B!!1 SIGMA SUM V=0-6  DISSOCIATIVE 
+C SCALED BY 1.08 FOR INCREASED ENERGY LOSSES FROM VIB SERIES
+  436 IF(EN.LE.EIN(100)) GO TO 437
+      QIN(100,I)=.02230/(EIN(100)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(100)))-BETA2)*BBCONST*EN/(EN+EIN(100)+BEF(5))*1.08 
+      IF(QIN(100,I).LT.0.0) QIN(100,I)=0.0
+      IF(EN.LE.(2.0*EIN(100))) GO TO 437
+      PEQIN(100,I)=PEQEL(2,(I-IOFFN(100)))
+C D!1 PI     SUM V=0-3  DISSOCIATIVE
+C SCALED BY 1.08 FOR INCREASED ENERGY LOSSES FROM VIB SERIES
+  437 IF(EN.LE.EIN(101)) GO TO 438
+      QIN(101,I)=.01450/(EIN(101)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(101)))-BETA2)*BBCONST*EN/(EN+EIN(101)+BEF(5))*1.08 
+      IF(QIN(101,I).LT.0.0) QIN(101,I)=0.0
+      IF(EN.LE.(2.0*EIN(101))) GO TO 438
+      PEQIN(101,I)=PEQEL(2,(I-IOFFN(101)))
+C B!!!1 SIGMA + D!!1 PI VIBRATION SUMMED   DISSOCIATIVE 
+C  SCALED BY 1.08 FOR INCREASED ENERGY LOSSES FROM VIB SERIES
+  438 IF(EN.LE.EIN(102)) GO TO 439
+      QIN(102,I)=.01450/(EIN(102)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(102)))-BETA2)*BBCONST*EN/(EN+EIN(102)+BEF(5))*1.08 
+      IF(QIN(102,I).LT.0.0) QIN(102,I)=0.0
+      IF(EN.LE.(2.0*EIN(102))) GO TO 439
+      PEQIN(102,I)=PEQEL(2,(I-IOFFN(102)))
+C B!!!!1 SIGMA + D!!!1 PI VIBRATION SUMMED   DISSOCIATIVE
+C  SCALED BY 1.08 FOR INCREASED ENERGY LOSSES FROM VIB SERIES
+  439 IF(EN.LE.EIN(103)) GO TO 440
+      QIN(103,I)=.01010/(EIN(103)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(103)))-BETA2)*BBCONST*EN/(EN+EIN(103)+BEF(5))*1.08 
+      IF(QIN(103,I).LT.0.0) QIN(103,I)=0.0
+      IF(EN.LE.(2.0*EIN(103))) GO TO 440
+      PEQIN(103,I)=PEQEL(2,(I-IOFFN(103)))
+C B!!!!!1 SIGMA + D!!!!1 PI VIBRATION SUMMED   DISSOCIATIVE 
+C  SCALED BY 1.08 FOR INCREASED ENERGY LOSSES FROM VIB SERIES
+  440 IF(EN.LE.EIN(104)) GO TO 441
+      QIN(104,I)=.00500/(EIN(104)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(104)))-BETA2)*BBCONST*EN/(EN+EIN(104)+BEF(5))*1.08
+      IF(QIN(104,I).LT.0.0) QIN(104,I)=0.0
+      IF(EN.LE.(2.0*EIN(104))) GO TO 441
+      PEQIN(104,I)=PEQEL(2,(I-IOFFN(104)))
+C CONTINUUM EXCITATION AROUND IONISATION ENERGY   DISSOCIATIVE
+C SCALED BY 1.20 FOR INCREASED ENERGY LOSSES ABOVE THRESHOLD
+  441 IF(EN.LE.EIN(105)) GO TO 442
+      QIN(105,I)=.02680/(EIN(105)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(105)))-BETA2)*BBCONST*EN/(EN+EIN(105)+BEF(5))*1.20
+      IF(QIN(105,I).LT.0.0) QIN(105,I)=0.0
+      IF(EN.LE.(2.0*EIN(105))) GO TO 442
+      PEQIN(105,I)=PEQEL(2,(I-IOFFN(105)))
+C PREDISSOCIATION ABOVE IONISATION ENERGY         DISSOCIATIVE
+C SCALED BY 1.2 FOR INCREASED ENERGY LOSSES ABOVE THRESHOLD 
+  442 IF(EN.LE.EIN(106)) GO TO 443
+      QIN(106,I)=.01700/(EIN(106)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
+     /EIN(106)))-BETA2)*BBCONST*EN/(EN+EIN(106)+BEF(5))*1.20 
+      IF(QIN(106,I).LT.0.0) QIN(106,I)=0.0
+      IF(EN.LE.(2.0*EIN(106))) GO TO 443
+      PEQIN(106,I)=PEQEL(2,(I-IOFFN(106)))
+  443 CONTINUE
+C---------------------------------------------------------------------
+      Q(1,I)=0.0
+      DO 555 NL=1,106
+      Q(1,I)=Q(1,I)+QIN(NL,I)
+  555 CONTINUE
+      Q(1,I)=Q(1,I)+Q(2,I)+Q(4,I)+Q(5,I) 
+C     WRITE(6,991) EN,Q(2,I),Q(4,I),Q(5,I),Q(1,I)          
+C 991 FORMAT(' EN=',D12.4,' ELAS=',D12.4,' ATT =',D12.4,'IONS=',D12.4,'
+C    / TOT=',D12.4) 
+  900 CONTINUE 
+C  SAVE COMPUTE TIME
+      DO 910 K=1,20 
+      IF(EFINAL.LE.EIN(K)) THEN
+       NIN=K-1
+       GO TO 911
+      ENDIF
+  910 CONTINUE
+  911 CONTINUE
+C                                                                       
+      RETURN                                                            
       END 

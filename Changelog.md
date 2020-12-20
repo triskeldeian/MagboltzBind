@@ -7,8 +7,23 @@ These are only the changes of the MagboltzBind project
 * Added the C header file for external binding
 * Added a library to link magboltz to external codes
 
+### VERSION 9.0.3
+* Changed the example input files according to the new input interface
+* Chenged the C header according to the example in Garfield.
+
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
+
+### VERSION 9.0.3
+* Since version 6 the calculation of the statistical accuracy of the drift velocity and diffusion coefficients has underestimated the accuracy by a factor of approx. sqrt(10) . this error has been fixed in this version and now gives a factor of 10 shorter calculation time for the same accuracy. 
+* Increased decorrelation matrix to 2000000 collisions
+
+### VERSION 9.0.2 
+* Update increases decorrelation matrix from 400000 collisions to 1000000. increases the calculation accuracy of the longitudinal diffusion in the most sensitive gas pure xenon to better than 2%.
+
+### VERSION 9.0.1
+* Update includes background gas motion(temperature) allows modelling of drift and diffusion at low fields
+* Update to gas data subroutines to increase array size for inelastics to 250 levels and up to 8 ionisation levels per gas. 
 
 ### VERSION 8.9.7
 * Update for krypton with 51 levels 

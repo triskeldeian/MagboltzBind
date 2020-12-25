@@ -1,0 +1,4 @@
+add_executable(MagboltzLibTest MagboltzLibTest.cpp)
+target_link_libraries(MagboltzLibTest magboltz)
+
+add_test(NAME MagboltzLibTest COMMAND MagboltzLibTest)

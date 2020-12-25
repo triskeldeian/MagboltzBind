@@ -26,4 +26,13 @@ install( TARGETS ${libname} EXPORT "${PROJECT_NAME}Targets"
          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
          RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-		 )
+         )
+#Install the header files
+install( DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} )         
+target_include_directories(${libname} PUBLIC
+$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>	
+   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+         
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()

@@ -57,8 +57,9 @@ extern struct
     double small;
     double api;
     double estart;
-    double theta, phi;
-    double tcfmax[8];
+    double theta;
+    double phi;
+    // double tcfmax[8];
     double rstart;
     double efield;
     long long nmax;
@@ -120,7 +121,8 @@ extern struct
 /* Townsend and attachment coefficient */
 extern struct
 {
-    double alpha, att;
+    double alpha;
+    double att;
 } ctowns_;
 extern struct
 {
@@ -135,6 +137,15 @@ extern struct
     double rattof, ratofer;
 } tofout_;
 
+extern struct
+{
+    double amgas[6];
+    double vtmb[6];
+    double tcfmx;
+    double tcfmxg[6];
+    int ithrm; /* Switch between static and thermal gas */
+} thrm_;
+
 /* Magboltz internal functions */
 
   void gasmix_(long long* ngs, double* q, 
@@ -144,19 +155,43 @@ extern struct
         double* qion, double* peqion, double* eion, long long* nion,
         char scrpt[260][50]);
 
+/* Setup functions for static and thermal gas respectively */
 void
-setup1_();
+setup_(int* );
+void
+setupt_(int* );
 
+/* Setup the gas mixture cross sections for static and 
+thermal gas respectively */
 void
 mixer_();
+void
+mixert_();
 
+/* Calculations of the energy limit of the calculations
+for the static and thermal gas respectively.
+elimit and elimitt are for B and E aligned
+elimitb and elimitbt are for B and E at 90 degrees
+elimitc and elimitct are for other conditions*/
 void
 elimit_(long long* ielow);
 void
 elimitb_(long long* ielow);
 void
 elimitc_(long long* ielow);
+void
+elimitt_(long long* ielow);
+void
+elimitbt_(long long* ielow);
+void
+elimitct_(long long* ielow);
 
+/* The actual MC calculations for static and 
+thermal gas respectively
+monte and montet are for the B=0 case
+montea and monteat are for E and B aligned
+monteb and montebt are for B at 90 degrees
+montec and montect are for the other cases */
 void
 monte_();
 void
@@ -165,7 +200,21 @@ void
 monteb_();
 void
 montec_();
+void
+montet_();
+void
+monteat_();
+void
+montebt_();
+void
+montect_();
 
+/* Attachment calculations for static and 
+thermal gas respectively
+alpcalc and alpcalct are for B=0
+alpclca and alpclcat are for E and B aligned
+alpclcb and alpclcbt are for E and B at 90 degrees
+alpclcc and alpclcct are for any other field configuration */
 void
 alpcalc_();
 void
@@ -174,13 +223,28 @@ void
 alpclcb_();
 void
 alpclcc_();
+void
+alpcalct_();
+void
+alpclcat_();
+void
+alpclcbt_();
+void
+alpclcct_();
 
+/* Output functions for static and thermal gase*/
 void
 prnter_();
 void
 output_();
 void
 output2_();
+void
+prntert_();
+void
+outputt_();
+void
+output2t_();
 
 #ifdef __cplusplus
 } // End extern C

@@ -1,18 +1,27 @@
 ## MagboltzBind changelog
 These are only the changes of the MagboltzBind project
 
+### VERSION 9.0.3
+* Updated the library interface
+* Built a simple test program 
+* Changed the example input files according to the new input interface
+
 ### VERSION 8.9.1
 * Added the CMake build system
 * Added the single run executable based on the fortran sources
 * Added the C header file for external binding
 * Added a library to link magboltz to external codes
 
-### VERSION 9.0.3
-* Changed the example input files according to the new input interface
-* Chenged the C header according to the example in Garfield.
-
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
+
+### VERSION 10.2
+* Since version 6 the calculation of the statistical accuracy of the drift velocity and diffusion coeficients has underestimated the accuracy by a factor of approx. sqrt(10) . this error has been fixed in this version and now gives a factor of 10 shorter calculation time for the same accuracy.
+* Increased decorreelation matrix to 2000000 collisions
+### VERSION 10.1
+* Includes better model of ionisation all noble gases include inner shells ionisations and auger emission model for outer shells. 
+* Decorrelation for gases now dependent on mass saves 
+* Computing time for gases not mixed with krypton or xenon
 
 ### VERSION 9.0.3
 * Since version 6 the calculation of the statistical accuracy of the drift velocity and diffusion coefficients has underestimated the accuracy by a factor of approx. sqrt(10) . this error has been fixed in this version and now gives a factor of 10 shorter calculation time for the same accuracy. 

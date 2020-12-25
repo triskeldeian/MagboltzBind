@@ -15,6 +15,12 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 10.6
+* Upgrade to SF6 also included in degrade
+
+### VERSION 10.5
+* Contains upgrade for isobutane (better townsend) both ch4 and c4h10 now have correct optical oscillator strength
+
 ### VERSION 10.4
 * Corrected bef scaling in argon data base   argon2014
 

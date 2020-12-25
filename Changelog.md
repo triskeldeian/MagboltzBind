@@ -15,9 +15,16 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 10.4
+* Corrected bef scaling in argon data base   argon2014
+
+### VERSION 10.3
+* Updated helium ionisation x-section   helium 2014
+
 ### VERSION 10.2
 * Since version 6 the calculation of the statistical accuracy of the drift velocity and diffusion coeficients has underestimated the accuracy by a factor of approx. sqrt(10) . this error has been fixed in this version and now gives a factor of 10 shorter calculation time for the same accuracy.
 * Increased decorreelation matrix to 2000000 collisions
+
 ### VERSION 10.1
 * Includes better model of ionisation all noble gases include inner shells ionisations and auger emission model for outer shells. 
 * Decorrelation for gases now dependent on mass saves 

@@ -15,6 +15,28 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 10.13
+* O2 Upgrade improved fit to pure and argon mix data fit extended to 2000TD
+
+### VERSION 10.12
+* N2 Upgrade includes dissociative ionisation
+
+### VERSION 10.11
+* H2 upgrade includes dissociative ionisation allows calculation of total dissociation yield
+
+### VERSION 10.10 
+* CO2 upgrade with correct oscillator strength and dissociative ionisation 
+
+### VERSION 10.9
+* TMA (CH3)3-N upgrade
+
+### VERSION 10.8
+* CF4 upgrade neutral dissociation given by oscillator
+* Oscillator strength to 33 dipole levels and 3 n0n dipole levels. ionisation now includes dissociative ionisation from rice university.
+
+### VERSION 10.7
+* CH4 2015 now includes all dissociative ionisation upgrade also in degrade
+
 ### VERSION 10.6
 * Upgrade to SF6 also included in degrade
 

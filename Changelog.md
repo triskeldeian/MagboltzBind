@@ -15,6 +15,17 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.1 
+* Updated C2H6 1999 file to C2H6 2016
+
+### VERSION 11
+* Introduced multiple null collisions to allow simulation of light emission and dissociation.
+* Increased number of allowed ionisation levels to 30.
+* Increased number of allowed attachment levels to  8 
+* Also added possible fictional constant ionisation frequency to allow for more accurate calculation of highly attaching mixtures ( when attachment rate is greater than 30/cm at ntp)
+* Now introduced free format input file reading.
+* C2H6 2016 update
+
 ### VERSION 10.14
 * O2 with improved rotational x-sections from geltman and takayangi. see 10.13 or last update
 

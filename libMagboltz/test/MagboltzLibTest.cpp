@@ -113,24 +113,26 @@ main()
     double alpp = Magboltz::ctowns_.alpha * epscale;
     double attp = Magboltz::ctowns_.att * epscale;
 
-    if (fabs(alpp - attp) > sstmin || alpp > sstmin || attp > sstmin)
+    if (fabs(alpp - attp) < sstmin)
     {
-        if (Magboltz::bfld_.bmag == 0.)
-        {
-            Magboltz::alpcalct_();
-        }
-        else if (Magboltz::bfld_.btheta == 0. || Magboltz::bfld_.btheta == 180.0)
-        {
-            Magboltz::alpclcat_();
-        }
-        else if (Magboltz::bfld_.btheta == 90)
-        {
-            Magboltz::alpclcbt_();
-        }
-        else
-        {
-            Magboltz::alpclcct_();
-        }
+        Magboltz::output2t_();
+        return 2;
+    }
+    if (Magboltz::bfld_.bmag == 0.)
+    {
+        Magboltz::alpcalct_();
+    }
+    else if (Magboltz::bfld_.btheta == 0. || Magboltz::bfld_.btheta == 180.0)
+    {
+        Magboltz::alpclcat_();
+    }
+    else if (Magboltz::bfld_.btheta == 90)
+    {
+        Magboltz::alpclcbt_();
+    }
+    else
+    {
+        Magboltz::alpclcct_();
     }
     Magboltz::output2t_();
 }

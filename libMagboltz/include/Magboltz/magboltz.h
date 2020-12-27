@@ -1,8 +1,8 @@
 #ifndef MAGBOLTZ_MAGBOLTZ_H__
 #define MAGBOLTZ_MAGBOLTZ_H__
 
-#define MAGBOLTZ_VERSION_MAJOR 10
-#define MAGBOLTZ_VERSION_MINOR 14
+#define MAGBOLTZ_VERSION_MAJOR 11
+#define MAGBOLTZ_VERSION_MINOR 1
 #define MAGBOLTZ_VERSION_PATCH 0
 
 #define MAGBOLTZ_MAKE_VERSION(major, minor, patch) ((major)*10000 + (minor)*100 + (patch))

@@ -15,6 +15,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 10.14
+* O2 with improved rotational x-sections from geltman and takayangi. see 10.13 or last update
+
 ### VERSION 10.13
 * O2 Upgrade improved fit to pure and argon mix data fit extended to 2000TD
 

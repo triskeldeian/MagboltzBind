@@ -15,6 +15,10 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.5
+* Updated CO2 2O14 file to CO2 2018
+* Small update to fit AR/CO2 85/15 data of cms muon detector. scaled  V(001) vibration x-section by 0.975
+
 ### VERSION 11.4 
 * Updated N2O 2004 file to N2O 2018
 * Attachment scaled in subroutine by 0.1 to better fit argon mixtures 

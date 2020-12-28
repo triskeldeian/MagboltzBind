@@ -1,6 +1,11 @@
-C  PROGRAM MAGBOLTZ 2   VERSION 11.4       DECEMBER 2018  
+C  PROGRAM MAGBOLTZ 2   VERSION 11.5        OCTOBER  2018  
 C --------------------------------------------------------------------
 C  COPYRIGHT 2018   STEPHEN FRANCIS BIAGI
+C----------------------------------------------------------------------
+C VERSION 11.5     UPDATED CO2 2O14 FILE TO CO2 2018
+C                  SMALL UPDATE TO FIT AR/CO2 85/15 DATA OF CMS MUON
+C                  DETECTOR.
+C                  SCALED  V(001) VIBRATION X-SECTION BY 0.975
 C----------------------------------------------------------------------
 C VERSION 11.4     UPDATED N2O 2004 FILE TO N2O 2018
 C                  ATTACHMENT SCALED IN SUBROUTINE BY 0.1 TO BETTER FIT
@@ -2701,7 +2706,7 @@ C   METRES PER PICOSECOND
       COMMON/FAKE/FAKEI,IFAKE,IFAKET(8),IFAKED(9)             
       CHARACTER*25 NAMEG                                  
       WRITE(6,1)
-    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 11.4 ',/)          
+    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 11.5 ',/)          
       WRITE(6,10) NGAS                                                  
    10 FORMAT(10X,'MONTE CARLO SOLUTION FOR MIXTURE OF ',I2,' GASES.',/,
      /5X,'------------------------------------------------------')  
@@ -12588,7 +12593,7 @@ C   METRES PER PICOSECOND
       COMMON/FAKE/FAKEI,IFAKE,IFAKET(8),IFAKED(9)          
       CHARACTER*25 NAMEG                                  
       WRITE(6,1)
-    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 11.4 ',/)          
+    1 FORMAT(2(/),10X,'PROGRAM MAGBOLTZ 2 VERSION 11.5 ',/)          
       WRITE(6,10) NGAS                                                  
    10 FORMAT(10X,'MONTE CARLO SOLUTION FOR MIXTURE OF ',I2,' GASES.',/,
      /5X,'------------------------------------------------------')  
@@ -40195,6 +40200,8 @@ C BREMSSTRAHLUNG X-SECTION WITH CUT OFF UNITS 10**-24 CM**2
       DATA EBRM/1000.,2000.,5000.,1.E4,2.E4,5.E4,1.E5,2.E5,5.E5,1.E6,
      /2.E6,3.E6,4.E6,5.E6,6.E6,8.E6,1.E7,1.5E7,2.E7,3.E7,
      /4.E7,5.E7,6.E7,8.E7,1.E8/
+C---------------------------------------------------------------------
+C 2018 UPDATE :  SCALED V(001) X-SECTION BY 0.975
 C ---------------------------------------------------------------------
 C 2015: UPGRADE INCLUDES :
 C      1) OSCILLATOR STRENGTH FROM ANALYSIS OF DATA FROM
@@ -40210,9 +40217,9 @@ C
 C ---------------------------------------------------------------------
 c     NANISO=0
       IF(NANISO.EQ.0) THEN
-       NAME='CO2  2015   ISOTROPIC    '
+       NAME='CO2  2018   ISOTROPIC    '
       ELSE
-       NAME='CO2  2015 ANISOTROPIC    '
+       NAME='CO2  2018 ANISOTROPIC    '
       ENDIF
 C  --------------------------------------------------------------------
 C ---------------------------------------------------------------------
@@ -40362,7 +40369,7 @@ C
   776 CONTINUE
 C DIPOLE TRANSITION STRENGTH FOR VIBRATIONS V010 AND V001      
       AMPV2=0.1703
-      AMPV3=0.3922
+      AMPV3=0.3824  
 C-----------------------------------------------------------------------
 C  B0 IS ROTATIONAL CONSTANT
 C  QBQA IS QUADRUPOLE MOMENT       
@@ -40640,12 +40647,12 @@ C------------------------------------------------------
       SCRPT(94)=' VIBRATION  POLYAD 9              ELOSS=  1.320   '
       SCRPT(95)=' VIBRATION  POLYAD HIGH SUM       ELOSS=  2.50    '
       SCRPT(96)=' 1DEL DISSOC CO + O   F=.0000698  ELOSS=  6.50    '
-      SCRPT(97)=' 1DEL DISSOC CO + 0   F=.0000630  ELOSS=  6.75    '
+      SCRPT(97)=' 1DEL DISSOC CO + O   F=.0000630  ELOSS=  6.75    '
       SCRPT(98)=' 1DEL DISSOC CO + O   F=.0000758  ELOSS=  7.00    '
       SCRPT(99)=' 1DEL DISSOC CO + O   F=.0001638  ELOSS=  7.25    '
       SCRPT(100)=' 1DEL DISSOC CO + O   F=.0003356  ELOSS=  7.50    '
-      SCRPT(101)=' 1DEL DISSOC CO + 0   F=.0007378  ELOSS=  7.75    '
-      SCRPT(102)=' 1DEL DISSOC CO + 0   F=.001145   ELOSS=  8.00    '
+      SCRPT(101)=' 1DEL DISSOC CO + O   F=.0007378  ELOSS=  7.75    '
+      SCRPT(102)=' 1DEL DISSOC CO + O   F=.001145   ELOSS=  8.00    '
       SCRPT(103)=' 1DEL DISSOC CO + O   F=.001409   ELOSS=  8.25    '
       SCRPT(104)=' 1DEL DISSOC CO + O   F=.001481   ELOSS=  8.50    '
       SCRPT(105)=' 1DEL DISSOC CO + O   F=.000859   ELOSS=  8.75    '
@@ -40654,7 +40661,7 @@ C------------------------------------------------------
       SCRPT(108)=' 1PI  DISSOC CO + O   F=.002115   ELOSS=  9.15    '
       SCRPT(109)=' 1PI  DISSOC CO + O   F=.001920   ELOSS=  9.40    '
       SCRPT(110)=' 1PI  DISSOC CO + O   F=.001180   ELOSS=  9.65    '
-      SCRPT(111)=' 1PI  DISSOC CO + 0   F=.000683   ELOSS=  9.90    '
+      SCRPT(111)=' 1PI  DISSOC CO + O   F=.000683   ELOSS=  9.90    '
       SCRPT(112)=' 1PI  DISSOC CO + O   F=.000456   ELOSS= 10.15    '
       SCRPT(113)=' SOME RATHENAU BANDS  F=.004361   ELOSS= 10.7     '
       SCRPT(114)=' 1SIG! + 1SIG + C!    F=.1718     ELOSS= 11.048   '
@@ -41485,7 +41492,7 @@ C 1DELu 8.25ev
       IF(EN.LE.EIN(87)) GO TO 1088
       QIN(87,I)=.001409/(EIN(87)*BETA2)*(DLOG(BETA2*GAMMA2*EMASS2/(4.0*
      /EIN(87)))-BETA2-DEN(I)/2.0)*BBCONST*EN/(EN+EIN(87)+E(3))*1.0152
-      IF(QIN(85,I).LT.0.0) QIN(87,I)=0.0
+      IF(QIN(87,I).LT.0.0) QIN(87,I)=0.0
       IF(EN.LE.(2.0*EIN(87))) GO TO 1088
       IF(NANISO.GT.0) PEQIN(87,I)=PEQEL(2,(I-IOFFN(87))) 
 C  1DELu 8.50ev   

@@ -15,6 +15,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.10
+* Updated dimethyl ether (DME)
+
 ### VERSION 11.9
 * Updated deuterium and added ortho deuterium
 

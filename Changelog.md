@@ -15,6 +15,12 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.6
+* Updated NH3 2004 file to NH3 2018 now includes dissociative ionisation and also neutral dissociation above ionissation energy from oscillator strength measurements.
+* Improved angular distribution for rotational states
+* Angular distribution for dipole excitation.
+* Fit to data before 2004 plus Lisovskiy J.PHYS.D  38(2005)872
+
 ### VERSION 11.5
 * Updated CO2 2O14 file to CO2 2018
 * Small update to fit AR/CO2 85/15 data of cms muon detector. scaled  V(001) vibration x-section by 0.975

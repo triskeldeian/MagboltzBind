@@ -15,6 +15,12 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.9
+* Updated deuterium and added ortho deuterium
+
+### VERSION 11.8
+* Updated hydrogen and para hydrogen 
+
 ### VERSION 11.7
 * Updated alcohols: CH2OH,C2H5OH, N-C3H7OH and ISO-C3H7OH  updated from 1999 to  2019. Dissociative excitation and ionisation now included. fit to christophorou at low field and hasegawa at high field . hasegawa data improves on old x-sections at high field.
 * Rotational angular distributions for dipole. approximation of rotation to linear rotor since the rotational energy levels are too complex to include less than 200 levels.    

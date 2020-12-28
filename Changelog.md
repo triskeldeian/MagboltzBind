@@ -15,8 +15,13 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.4 
+* Updated N2O 2004 file to N2O 2018
+* Attachment scaled in subroutine by 0.1 to better fit argon mixtures 
+
 ### VERSION 11.3 
 * Updated H2O 2004 file to H2O 2017
+
 ### VERSION 11.2 
 * Updated C3H8 1999 file to C3H8 2017
 

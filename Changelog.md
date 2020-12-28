@@ -15,6 +15,9 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.2 
+* Updated C3H8 1999 file to C3H8 2017
+
 ### VERSION 11.1 
 * Updated C2H6 1999 file to C2H6 2016
 

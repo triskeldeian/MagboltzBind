@@ -15,6 +15,11 @@ These are only the changes of the MagboltzBind project
 ## Magboltz changelog
 These are the changes introduced in the original Magboltz code
 
+### VERSION 11.7
+* Updated alcohols: CH2OH,C2H5OH, N-C3H7OH and ISO-C3H7OH  updated from 1999 to  2019. Dissociative excitation and ionisation now included. fit to christophorou at low field and hasegawa at high field . hasegawa data improves on old x-sections at high field.
+* Rotational angular distributions for dipole. approximation of rotation to linear rotor since the rotational energy levels are too complex to include less than 200 levels.    
+* Missing transport data between 30 and 200 td for methanol and ethanol. no transport data in the iso-propanol and n-propanol above 30td. assigned 4* to methanol and ethanol and 3* to the propanols 
+
 ### VERSION 11.6
 * Updated NH3 2004 file to NH3 2018 now includes dissociative ionisation and also neutral dissociation above ionissation energy from oscillator strength measurements.
 * Improved angular distribution for rotational states

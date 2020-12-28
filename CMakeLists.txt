@@ -10,7 +10,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 		"Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-project( MagboltzBind LANGUAGES CXX Fortran VERSION 11.6)
+project( MagboltzBind LANGUAGES CXX Fortran VERSION 11.7)
 
 include(GNUInstallDirs)
 include(CTest)

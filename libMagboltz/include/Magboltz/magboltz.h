@@ -42,36 +42,35 @@ extern struct
     long long nGas; /* Number of gases in the mixture*/
     long long nStep; /* Number of steps in the MC calculation */
     long long nAniso; /*The type of scattering cross section to use. Alowed values are 0, 1, 2*/
-    double efinal;
-    double estep;
-    double akt;
-    double ary;
-    double tempc;
-    double torr;
-    long long ipen;
+    double efinal; /* The final electron energy for the MC integration*/
+    double estep; /* Number of integration steps */
+    double akt; /* The Kb * T. Calculated internally */
+    double ary; /* Rydberg constant in eV */
+    double tempc; /* Temperature in Celsius */
+    double torr; /* Pressure in Torr */
+    long long ipen; /* Switches the Penning effects. ON = 1 OFF = 0*/
 } inpt_;
 
 extern struct
 {
-    double tmax;
-    double small;
-    double api;
-    double estart;
-    double theta;
-    double phi;
-    // double tcfmax[8];
-    double rstart;
-    double efield;
-    long long nmax;
+    double tmax; /* Constant defined as 100.0. Used to defined the integration limits */
+    double small; /* Constant defined as 1E-20. Small number used to calculate integration limits */
+    double api; /* Pi in radians */
+    double estart; /* Starting point of the integration */
+    double theta; /* Internal variable defining the scattering angle */
+    double phi; /* Internal variable defining the azimutal angle of scattering */
+    double rstart; /* Seed of the internal random number generator */
+    double efield; /* The electric field for which to calculate the properties in V/cm */
+    long long nmax; /* Number of collisions in multiple of 1E7
 } setp_;
 
 /* Physical constants */
 extern struct
 {
-    double echarg;
-    double emass;
-    double amu;
-    double pir2;
+    double echarg; /* Electric charge */
+    double emass; /* Electron mass */
+    double amu; /* Atomic mass unit */
+    double pir2; 
 } cnsts_;
 
 /* Definition of the gas mixture   */
